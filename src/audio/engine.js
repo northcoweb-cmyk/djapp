@@ -337,6 +337,42 @@ export class AudioEngine {
     this.decks.forEach((d) => d.updateMeter());
   }
 
+  // ambient crowd chatter (doors open, quiet sections): band-passed noise with slow swells
+  murmur(level) {
+    if (this._murLevel !== undefined && Math.abs(level - this._murLevel) < 0.01) return;
+    this._murLevel = level;
+    const ctx = this.ctx;
+    if (!this.murGain) {
+      this.murGain = ctx.createGain();
+      this.murGain.gain.value = 0;
+      this.murGain.connect(this.crowd);
+      for (const [f, q, rate] of [
+        [420, 0.9, 0.13],
+        [900, 1.1, 0.21],
+        [1700, 1.4, 0.17],
+      ]) {
+        const src = ctx.createBufferSource();
+        src.buffer = this.noiseBuf;
+        src.loop = true;
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = f;
+        bp.Q.value = q;
+        const g = ctx.createGain();
+        g.gain.value = 0.22;
+        const lfo = ctx.createOscillator();
+        lfo.frequency.value = rate;
+        const lg = ctx.createGain();
+        lg.gain.value = 0.12;
+        lfo.connect(lg).connect(g.gain);
+        src.connect(bp).connect(g).connect(this.murGain);
+        src.start(0, Math.random() * 2);
+        lfo.start();
+      }
+    }
+    this.murGain.gain.setTargetAtTime(level * 0.5, ctx.currentTime, 1.2);
+  }
+
   // ---------------- crowd voice synthesis ----------------
   _voice(t, dur, f0, vowel, gain, glide = 0) {
     const ctx = this.ctx;
