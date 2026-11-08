@@ -138,3 +138,41 @@ Still to do for the ears: tune fill-vs-drop on Good Girl; detect vocal sections 
 - Now-playing panel: section, "drop in N bars", BPM and a hype meter.
 - Track timeline: sections coloured, drops marked, crowd hype overlaid.
 - DJ action log, camera buttons, volume control, crowd brain panel and drop scorecard.
+
+---
+
+# Decisions from the user (round 2). These override anything above.
+
+## Drops and crowd realism
+- Drop = mostly a bass drop. Sometimes a **vocal hook landing** counts too (needs vocal detection).
+- The crowd must not overreact. Reactions are realistic and restrained; people differ a lot (some jump, some bob, some barely move).
+- **Sing-along:** rare (about 1 in 5 songs, or only on one specific song). Use varied voice models/layers. Cheering is more common.
+- **Quiet or break sections:** light "oh yeah" cheers and, rarely, a few claps. If the beat suits it, clap along. These are random events (roughly every 5–10 songs), not constant.
+- Cheers, claps and sing-along are **synthesized/layered crowd audio** mixed quietly under the music (no sample files needed up front; bring in free CC0 crowd samples later if wanted).
+
+## Crowd layout (200 people)
+- **Front:** the tallest people, most hyped, some pushing in.
+- **Middle:** jumpers.
+- **Back:** chill. A few jumpers at the back who couldn't get to the front.
+- People bump and push past each other; some push toward the front.
+- **Bar at the back, with bartenders:** people drift there naturally (not obviously), wait, get served, take the drink and walk back. Bartenders visibly make drinks.
+- Extra life details (ideas I will add): people greeting friends and hugging, a few couples, someone leaving and re-entering, security checking the barrier, glow sticks and drinks being raised on the drop, someone filming a story, hair and clothes moving, sweat sheen late in the night, crowd density shifting with the song's energy.
+
+## AI DJ transitions (fully automatic)
+- **Energy matching:** a high-energy outgoing section must land on a high-energy section of the incoming track. The planner scores candidate (out-point, in-point) pairs by energy, key/bass compatibility and phrase alignment, then picks the best.
+- Transition types: 16-bar blend, 8-bar blend, echo-out, filter swap, bass-swap, cut on the one. Chosen by intro/outro length and energy.
+- The DJ also: cuts the bass at certain points, uses cue points, and can lay one track's vocal over another's drop (acapella-style) when the keys are compatible.
+- **Every transition is explained on screen** in plain language (for example "16-bar blend: bass swap on bar 8, high-pass sweep out, drop lands on the outgoing breakdown").
+- **FX:** subtle mid-song. Strong on builds, drops and transitions. The RMX unit is used in transitions in basically every song.
+
+## DJ and booth look
+- DJ: white shirt, full tattoo sleeves on both arms, black jeans, silver watch, black cap, sunglasses. Calmer than the crowd.
+- A group of girls dancing behind the decks, well away from the DJ, in club outfits.
+- **Very realistic people are the top priority.** No cylinder or sphere people. Realistic eyes, bodies, clothing.
+
+## Lighting
+- **Blue and purple** as the main LED colors, with the ceiling LED grid from reference image 2. Wall color washes and designs, an LED dance floor, professional natural-looking effects that match the song, with no gimmicky patterns.
+
+## Character models
+- Cloud sandbox can only reach GitHub (Mixamo, Sketchfab, Quaternius, Poly Pizza and CDNs are blocked). The only models I can fetch myself are the three.js sample characters (Michelle, Xbot, Soldier), which are low-poly and **not** realistic enough.
+- Plan: the user downloads realistic rigged characters (GLB) and drops them in `public/models/`. The code is built to load them and fall back to the sample characters.
