@@ -5,6 +5,11 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { collides, zoneAt, floorY, PRIVATE, STAGE, BAR } from './club.js';
+import { prepCharacter } from './merge.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+const _frustum = new THREE.Frustum();
+const _proj = new THREE.Matrix4();
+const _sphere = new THREE.Sphere();
 
 const FEMALE = ['f02', 'f22', 'f37', 'twerk'];
 const MALE = ['m42', 'owner', 'dj', 'bartender'];
@@ -38,6 +43,7 @@ export async function loadAssets(base, onProgress = () => {}) {
   await Promise.all([
     ...Object.entries(man.chars).map(async ([id, c]) => {
       const gltf = await loader.loadAsync(base + 'models/' + c.file);
+      prepCharacter(gltf.scene);
       chars[id] = { scene: gltf.scene, height: c.height, unit: c.height / 176 };
       tick();
     }),
@@ -90,20 +96,59 @@ function makeProps(phoneScene) {
   fill.position.y = 7.6;
   ck.add(bowl, stem, fill);
   P.cocktail = ck;
-  // phone (user's model): long axis Z, ~2.15 units long -> ~15 cm
+  P.beer = bake(P.beer);
+  P.cup = bake(P.cup);
+  P.cocktail = bake(P.cocktail);
+  // phone (user's model): measure it in world space, stand it upright along the hand, 15 cm long
   if (phoneScene) {
-    const ph = phoneScene.clone(true);
-    const box = new THREE.Box3().setFromObject(ph);
-    const len = box.getSize(new THREE.Vector3()).z || 2.15;
-    const s = 15 / len;
-    ph.scale.setScalar(s);
-    ph.rotation.x = -Math.PI / 2;
-    P.phone = ph;
+    const inner = phoneScene.clone(true);
+    inner.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(inner);
+    const size = box.getSize(new THREE.Vector3());
+    inner.position.sub(box.getCenter(new THREE.Vector3()));
+    const a = new THREE.Group();
+    a.add(inner);
+    const dims = [size.x, size.y, size.z];
+    const long = dims.indexOf(Math.max(...dims));
+    if (long === 0) a.rotation.z = Math.PI / 2;
+    if (long === 2) a.rotation.x = Math.PI / 2;
+    const b = new THREE.Group();
+    b.add(a);
+    b.updateMatrixWorld(true);
+    const s2 = new THREE.Box3().setFromObject(b).getSize(new THREE.Vector3());
+    if (s2.x < s2.z) b.rotation.y = Math.PI / 2;
+    const c = new THREE.Group();
+    c.add(b);
+    c.scale.setScalar(15 / Math.max(...dims));
+    P.phone = c;
   } else {
     const ph = new THREE.Mesh(new THREE.BoxGeometry(7, 15, 0.8), new THREE.MeshStandardMaterial({ color: 0x111111 }));
     P.phone = ph;
   }
   return P;
+}
+
+const bakedMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+function bake(group) {
+  group.updateMatrixWorld(true);
+  const geos = [];
+  group.traverse((m) => {
+    if (!m.isMesh) return;
+    let g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+    for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k);
+    g.applyMatrix4(m.matrixWorld);
+    const col = m.material.color || new THREE.Color(0xffffff);
+    const n = g.attributes.position.count;
+    const ca = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      ca[i * 3] = col.r;
+      ca[i * 3 + 1] = col.g;
+      ca[i * 3 + 2] = col.b;
+    }
+    g.setAttribute('color', new THREE.Float32BufferAttribute(ca, 3));
+    geos.push(g);
+  });
+  return new THREE.Mesh(mergeGeometries(geos, false), bakedMat);
 }
 
 function makePhone(P, brightness, flash) {
@@ -142,10 +187,15 @@ export class Person {
     this.height = o.height || (this.female ? rand(1.62, 1.76) : rand(1.72, 1.88));
     this.obj.scale.setScalar(this.height / tpl.height);
     this.bones = {};
+    let sk = null;
     this.obj.traverse((b) => {
       if (b.isBone) this.bones[b.name.replace('mixamorig', '')] = b;
-      if (b.isMesh) b.castShadow = false;
+      if (b.isSkinnedMesh) {
+        if (!sk) sk = b.skeleton;
+        else if (b.skeleton.bones.length === sk.bones.length) b.bind(sk, b.bindMatrix);
+      }
     });
+    this.unit = tpl.unit;
     if (o.outfit !== false) this.dress(o.outfit || {});
     this.mixer = new THREE.AnimationMixer(this.obj);
     this.actions = {};
@@ -188,9 +238,9 @@ export class Person {
     const solid = o.solid ?? Math.random() < 0.55;
     this.obj.traverse((m) => {
       if (!m.isMesh) return;
-      const n = m.name.toLowerCase();
       const mats = Array.isArray(m.material) ? m.material : [m.material];
       const out = mats.map((mt) => {
+        const n = ((mt.name || '') + ' ' + m.name).toLowerCase();
         let c = null;
         if (/shirt|cloth|top|sweater|zipper|suit|tie|collar/.test(n)) c = top;
         else if (/pant|short|bottom|jean/.test(n)) c = bottom;
@@ -221,7 +271,9 @@ export class Person {
     if (!kind) return;
     const P = this.sim.props;
     const obj = kind === 'phone' ? makePhone(P, this.phoneBright || 1, this.phoneFlash) : P[kind].clone(true);
-    this.hand = this.attach('RightHand', obj, kind === 'phone' ? [0, 9, 3] : [0, 8, 4], kind === 'phone' ? [0, 0, 0] : [0, 0, 0]);
+    const u = this.unit || 1;
+    obj.scale.multiplyScalar(u);
+    this.hand = this.attach('RightHand', obj, kind === 'phone' ? [0, 9 * u, 3 * u] : [0, 8 * u, 4 * u]);
   }
   play(name, fade = 0.4, ts = 1) {
     if (!this.sim.assets.clips[name]) name = 'idle';
@@ -467,7 +519,11 @@ export class PeopleSim {
   }
 
   // ---------------- per-frame ----------------
-  update(dt, m, ctxNow, camPos, engine, input) {
+  update(dt, m, ctxNow, camera, engine, input) {
+    const camPos = camera.position;
+    this.frame = (this.frame || 0) + 1;
+    _proj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    _frustum.setFromProjectionMatrix(_proj);
     const beatPhase = m.playing ? (m.beat + m.beatFrac) * Math.PI : ctxNow * 2;
     const sec = m.section || 'idle';
     // score drops ~3 s after they land
@@ -478,18 +534,24 @@ export class PeopleSim {
         d.score = Math.round(clamp01(eu * 0.8 + (after - d.before) * 0.8 + d.strength * 0.25) * 100);
       }
     for (const p of this.people) {
-      // LOD: far people animate at half rate
+      // LOD: off-screen people barely animate, far people animate at 1/2 or 1/3 rate
       const dist = camPos.distanceTo(p.root.position);
-      const far = dist > 16 ? 2 : 1;
-      p.skip = (p.skip + 1) % far;
-      const adt = dt * far;
+      _sphere.center.copy(p.root.position);
+      _sphere.center.y += 1;
+      _sphere.radius = 1.3;
+      const vis = _frustum.intersectsSphere(_sphere);
+      const rate = p.role === 'dj' || p.role === 'player' ? 1 : !vis ? 8 : dist < 9 ? 1 : dist < 17 ? 2 : 3;
+      p.acc = (p.acc || 0) + dt;
+      const doAnim = (this.frame + p.id) % rate === 0;
       if (p.role === 'crowd') this.updateCrowd(p, dt, m, sec, ctxNow, beatPhase, engine);
       else if (p.role === 'staff') this.updateBartender(p, dt);
       else if (p.role === 'guard') this.updateGuard(p, dt);
       else if (p.role === 'dancer') this.updateDancer(p, dt, m);
       else if (p.role === 'player') this.updatePlayer(p, dt, input);
       p.place();
-      if (p.skip === 0) p.mixer.update(adt);
+      if (!doAnim) continue;
+      p.mixer.update(p.acc);
+      p.acc = 0;
       // procedural head bob on the beat (after the clip pose)
       const neck = p.bones.Neck;
       if (neck && m.playing && p.state !== 'walk' && p.role !== 'player') {

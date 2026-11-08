@@ -3,6 +3,7 @@
 // speakers, signage, haze. Also exports colliders + zones for navigation.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeStatic } from './merge.js';
 
 export const ROOM = { x0: -15, x1: 15, z0: -10, z1: 10, h: 8 };
 export const STAGE = { x0: -7, x1: 7, z0: -10, z1: -6, y: 1.0 };
@@ -294,7 +295,7 @@ export function buildClub(scene) {
 
   // ---------- moving heads + beams ----------
   const heads = [];
-  const beamGeo = new THREE.CylinderGeometry(0.06, 1.1, 9, 24, 1, true);
+  const beamGeo = new THREE.CylinderGeometry(0.06, 1.1, 9, 14, 1, true);
   beamGeo.translate(0, -4.5, 0);
   for (let i = 0; i < 10; i++) {
     const z = trussZ[i % 2 ? 1 : 2];
@@ -358,13 +359,10 @@ export function buildClub(scene) {
   g.add(barLight);
   const loungeLight = new THREE.PointLight(0xff7a5a, 10, 8, 1.6);
   loungeLight.position.set(12.4, 2.6, 2.5);
-  g.add(loungeLight);
   const backLight = new THREE.PointLight(0xfff0dd, 8, 8, 1.6);
   backLight.position.set(0, 3.4, -12);
-  g.add(backLight);
   const strobeLight = new THREE.PointLight(0xffffff, 0, 30, 1.2);
-  strobeLight.position.set(0, 6.5, -4);
-  g.add(strobeLight);
+  strobeLight.position.set(0, 6.5, -4); // not added: strobes are emissive + hemi pump (cheaper)
 
   // ---------- speakers ----------
   const spkMat = new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.6 });
@@ -551,7 +549,7 @@ export function buildClub(scene) {
     c.fillRect(0, 0, w, h);
   });
   const smoke = [];
-  for (let i = 0; i < 36; i++) {
+  for (let i = 0; i < 14; i++) {
     const sm = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, color: 0x4a3a8a, transparent: true, opacity: 0.08, depthWrite: false, blending: THREE.AdditiveBlending }));
     sm.position.set((Math.random() - 0.5) * 22, 0.8 + Math.random() * 5.5, -8 + Math.random() * 15);
     sm.scale.setScalar(5 + Math.random() * 5);
@@ -579,7 +577,9 @@ export function buildClub(scene) {
   camRig(0, STAGE.y + 1.25, -7.25, Math.PI); // fisheye cam in front of the decks (faces the DJ)
   camRig(-11.9, 5.3, 0, -Math.PI / 2 - 0.2); // balcony cam
 
-  return { group: g, pix, pts, ledWallMat, tileMat, heads, lasers, strobes, strobeLight, spotA, spotB, washes, smoke, loungeSeats, mats };
+  const merged = mergeStatic(g, [pix, ledWall, tiles, bottles, ...heads.map((h) => h.fix), ...lasers, ...strobes]);
+  console.info('club meshes merged', merged);
+  return { group: g, pix, pts, ledWallMat, tileMat, heads, lasers, strobes, strobeLight, spotA, spotB, hemi, washes, smoke, loungeSeats, mats };
 }
 
 // ---------- per-frame lighting show ----------
@@ -598,6 +598,9 @@ export function updateClub(club, t, dt, m, bands, lightFX) {
   const build = sec === 'build' ? Math.max(0, Math.min(1, 1 - m.toDrop / 16)) : 0;
   const flash = lightFX.flash;
   const kick = m.playing ? Math.pow(1 - m.beatFrac, 3) * (m.bass > 0.4 ? 1 : 0.2) : 0;
+  const dropOn = m.playing && sec === 'drop';
+  const beatPulse = m.playing ? Math.pow(1 - m.beatFrac, 2.2) : 0; // hits on every beat
+  const impact = lightFX.impact || 0; // 1 right at the drop, fades over 2 bars
   // ceiling pixels
   const n = pts.length;
   for (let i = 0; i < n; i++) {
@@ -610,33 +613,38 @@ export function updateClub(club, t, dt, m, bands, lightFX) {
     } else if (sec === 'breakdown' || sec === 'intro' || sec === 'outro') {
       k = 0.25 + 0.2 * Math.sin(p[0] * 0.7 + t * 0.8) * Math.sin(p[2] * 0.5 - t * 0.6);
       if (Math.random() < 0.002) k = 1.0; // sparkle
+    } else if (dropOn) {
+      // drop: the whole grid punches on every kick, rings radiate out from the stage
+      const d = Math.hypot(p[0], p[2] + 8);
+      const ring = Math.max(0, Math.sin(d * 0.8 - (m.beat + m.beatFrac) * Math.PI * 2));
+      k = 0.16 + beatPulse * 1.15 + ring * 0.45 * beatPulse + impact * 1.3;
     } else {
-      // groove/drop: radial pulse on the kick + slow colour sweep
+      // groove: radial pulse on the kick + slow colour sweep
       const d = Math.hypot(p[0], p[2] + 2);
       k = 0.3 + 0.7 * Math.max(0, Math.sin(d * 0.9 - t * 6)) * (0.35 + kick * 0.9) * (0.5 + hype);
     }
     const mix = 0.5 + 0.5 * Math.sin(p[0] * 0.25 + p[2] * 0.2 + t * 0.35);
     tmp.copy(BLUE).lerp(PURPLE, mix).multiplyScalar(Math.max(0.03, k) * 1.6);
-    if (flash > 0.01) tmp.lerp(WHITE, flash * 0.7);
+    if (flash > 0.01 || impact > 0.01) tmp.lerp(WHITE, Math.min(1, flash * 0.7 + impact * 0.5));
     pix.setColorAt(i, tmp);
   }
   pix.instanceColor.needsUpdate = true;
   // LED wall + floor
   const lw = club.ledWallMat.uniforms;
   lw.time.value = t;
-  lw.bass.value = bands.low;
+  lw.bass.value = dropOn ? Math.max(bands.low, beatPulse) : bands.low;
   lw.high.value = bands.high;
   lw.hype.value = 0.3 + hype * 0.7;
-  lw.flash.value = flash;
+  lw.flash.value = Math.max(flash, dropOn ? beatPulse * 0.3 : 0, impact * 0.6);
   lw.build.value = build;
   const tl = club.tileMat.uniforms;
   tl.time.value = t;
   tl.bass.value = bands.low;
   tl.hype.value = 0.2 + hype;
-  tl.flash.value = flash;
+  tl.flash.value = Math.max(flash, dropOn ? beatPulse * 0.7 : 0);
   // moving heads
   for (const h of club.heads) {
-    const ph = t * (sec === 'drop' ? 0.9 : 0.35) + h.phase;
+    const ph = dropOn ? m.bar * 1.3 + h.phase + Math.sin(t * 2.4 + h.phase) * 0.35 : t * 0.35 + h.phase;
     let pan = Math.sin(ph) * 0.7;
     let tilt = 0.35 + Math.sin(ph * 1.3) * 0.25;
     if (sec === 'build') {
@@ -646,17 +654,17 @@ export function updateClub(club, t, dt, m, bands, lightFX) {
     if (sec === 'breakdown') tilt = 0.15 + Math.sin(ph) * 0.1;
     h.head.rotation.set(tilt, 0, pan);
     const col = h.i % 3 === 0 ? VIOLET : h.i % 2 ? BLUE : PURPLE;
-    h.beam.material.uniforms.color.value.copy(col).lerp(WHITE, flash * 0.8);
-    const on = sec === 'drop' || sec === 'groove' ? 0.6 + kick * 0.6 : sec === 'build' ? 0.4 + build * 0.8 : 0.35;
+    h.beam.material.uniforms.color.value.copy(col).lerp(WHITE, Math.min(1, Math.max(flash * 0.8, impact * 0.75)));
+    const on = dropOn ? 0.5 + beatPulse * 1.1 + impact * 1.6 : sec === 'groove' ? 0.55 + kick * 0.6 : sec === 'build' ? 0.4 + build * 0.9 : 0.35;
     h.beam.material.uniforms.intensity.value = m.playing ? on : 0.2;
     h.lens.material.color.copy(col).multiplyScalar(1 + on);
   }
   // lasers: fan sweeps on drops/grooves, off otherwise
   club.lasers.forEach((l, i) => {
     const active = m.playing && (sec === 'drop' || (sec === 'build' && build > 0.6));
-    l.material.opacity += ((active ? 0.55 : 0) - l.material.opacity) * Math.min(1, dt * 6);
+    l.material.opacity += ((active ? 0.75 : 0) - l.material.opacity) * Math.min(1, dt * 8);
     const fan = ((i >> 1) / 6 - 0.5) * 1.6;
-    l.rotation.set(1.35 + Math.sin(t * 1.5 + i) * 0.12, 0, fan + Math.sin(t * 0.8) * 0.3);
+    l.rotation.set(1.35 + Math.sin(t * (dropOn ? 3.2 : 1.5) + i) * 0.14, 0, fan + Math.sin(t * (dropOn ? 1.9 : 0.8)) * 0.35);
     l.material.color.copy(i % 4 === 0 ? PURPLE : VIOLET).lerp(WHITE, 0.25);
   });
   // strobes
@@ -668,13 +676,14 @@ export function updateClub(club, t, dt, m, bands, lightFX) {
   cB.copy(PURPLE).lerp(BLUE, 0.5 + 0.5 * Math.sin(t * 0.4));
   club.spotA.color.copy(cA);
   club.spotB.color.copy(cB);
-  club.spotA.intensity = 26 + kick * 40 * hype + flash * 40;
-  club.spotB.intensity = 26 + kick * 40 * hype + flash * 40;
+  club.spotA.intensity = 26 + (dropOn ? beatPulse * 70 : kick * 40 * hype) + flash * 60 + impact * 40;
+  club.spotB.intensity = 26 + (dropOn ? beatPulse * 70 : kick * 40 * hype) + flash * 60 + impact * 40;
+  club.hemi.intensity = 0.45 + (dropOn ? beatPulse * 0.45 : 0) + impact * 0.8 + flash * 0.5;
   club.spotA.target.position.x = -2 + Math.sin(t * 0.5) * 3;
   club.spotB.target.position.x = 2 + Math.cos(t * 0.45) * 3;
   club.washes.forEach((w, i) => {
     w.material.color.copy(i % 2 ? BLUE : PURPLE);
-    w.material.opacity = 0.35 + 0.4 * hype + (i % 4 === m.beatInBar ? kick * 0.3 : 0);
+    w.material.opacity = 0.35 + 0.4 * hype + (i % 4 === m.beatInBar ? kick * 0.3 : 0) + (dropOn ? beatPulse * 0.35 : 0);
   });
   // haze drift
   for (const s of club.smoke) {

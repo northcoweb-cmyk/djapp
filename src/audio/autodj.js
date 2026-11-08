@@ -160,13 +160,15 @@ export class AutoDJ {
     od.setFader(0, tEnd, tEnd + 0.04);
     this.gesture(od.index, 'fader', tEnd - 0.1, 0.5);
     od.stop(tEnd + 6);
+    const dropObj = B.drops.find((d) => d.bar === n.dropBar) || { bar: n.dropBar, time: B.bars[n.dropBar].start, strength: 0.85 };
+    this.eng.schedule(tEnd, () => this.emit('drop', { track: n.track, drop: dropObj, time: tEnd }));
     this.eng.schedule(tEnd + 0.05, () => {
       od.setFilter(0, this.eng.now, this.eng.now + 0.1);
       ['low', 'mid', 'high'].forEach((b) => od.setEQ(b, 0.5));
       this.cur = { deck: id, track: n.track };
       this.qi = n.j;
       this.next = null;
-      this.planned = new Set();
+      this.planned = new Set([n.track.id + ':' + n.dropBar]);
       this.say(`Now playing: ${n.track.name} (deck ${id.index + 1})`, 'track');
       this.emit('track', this.cur);
       setTimeout(() => this.prepareNext(), 500);

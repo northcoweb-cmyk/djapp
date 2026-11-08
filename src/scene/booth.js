@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { STAGE } from './club.js';
+import { mergeStatic } from './merge.js';
 
 const SECTION_COL = { intro: '#555b66', groove: '#2fa860', build: '#e8c020', drop: '#e83a3a', breakdown: '#3a6ae8', outro: '#555b66' };
 
@@ -121,7 +122,7 @@ function buildCDJ(index) {
   const usb = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.006, 0.004), glow(0x2266ff));
   usb.position.set(0.11, 0.08, -0.226);
   g.add(usb);
-  return { group: g, screen: scr, center, jog, play, cue, pads, tcap, index, wfCache: null, wfTrack: null };
+  return { group: g, screen: scr, housing, center, jog, play, cue, pads, tcap, index, wfCache: null, wfTrack: null };
 }
 
 function buildMixer() {
@@ -275,6 +276,11 @@ export function buildBooth(scene) {
   hp.rotation.set(-Math.PI / 2, 0, 0.4);
   booth.add(hp);
 
+  const keep = [];
+  for (const d of decks) keep.push(d.housing, d.jog, d.play, d.cue, d.tcap, ...d.pads);
+  for (const c of mixer.ch) keep.push(c.trim, c.high, c.mid, c.low, c.filter, c.cap, ...c.vu);
+  keep.push(mixer.xcap, mixer.fxScr.mesh, mixer.fxKnob, mixer.fxOn, ...rmx.knobs, rmx.jogRing, rmx.jog, rmx.scr.mesh, strip, strip2);
+  console.info('booth meshes merged', mergeStatic(booth, keep));
   return { group: booth, decks, mixer, rmx, topY, wfT: 0 };
 }
 
@@ -464,7 +470,7 @@ function drawJogCenter(d, deck) {
 
 export function updateBooth(booth, engine, dt, now) {
   booth.wfT += dt;
-  const redraw = booth.wfT > 1 / 30;
+  const redraw = booth.wfT > 1 / 12;
   if (redraw) booth.wfT = 0;
   booth.decks.forEach((d, i) => {
     const deck = engine.decks[i];

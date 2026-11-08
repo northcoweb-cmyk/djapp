@@ -20,6 +20,7 @@ const canvas = $('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
+renderer.info.autoReset = false;
 const maxDpr = Math.min(window.devicePixelRatio || 1, 1.5);
 let dpr = Math.min(1, maxDpr);
 renderer.setPixelRatio(dpr);
@@ -168,7 +169,9 @@ dj.on('gesture', (e) => {
   people.gesture(e, controlWorldPos(booth, e.deck, e.control), e.when);
 });
 dj.on('drop', (ev) => {
-  lightFX.flash = ev.drop.strength > 0.6 ? 1 : 0.5;
+  lightFX.flash = 1;
+  lightFX.dropAt = engine.now;
+  lightFX.dropStrength = ev.drop.strength;
   if (!people) return;
   people.onDrop(ev, engine.now);
   const eu = people.avg('anticipation') + ev.drop.strength * 0.6;
@@ -204,6 +207,7 @@ $('enter').addEventListener('click', async () => {
   const q = $('quality').value;
   quality = q;
   if (q === 'low') dpr = 0.7;
+  bloom.enabled = q !== 'low';
   if (q === 'high') dpr = maxDpr;
   renderer.setPixelRatio(dpr);
   resize();
@@ -490,12 +494,14 @@ function loop() {
   dj.update();
   const m = dj.state();
   // light cues: flash on drops (set by event), strobe in the last bar of a build
-  lightFX.flash = Math.max(0, lightFX.flash - dt * 2.2);
-  lightFX.strobe = m.playing && m.section === 'build' && m.toDrop < m.barSec ? 1 : 0;
+  lightFX.flash = Math.max(0, lightFX.flash - dt * 1.6);
+  const since = engine.now - (lightFX.dropAt ?? -99);
+  lightFX.impact = m.playing && since >= 0 && since < m.barSec * 2 ? (1 - since / (m.barSec * 2)) * (0.6 + 0.4 * (lightFX.dropStrength || 1)) : 0;
+  lightFX.strobe = m.playing && ((m.section === 'build' && m.toDrop < m.barSec) || (since >= 0 && since < m.barSec * 0.5)) ? 1 : 0;
   updateClub(club, t, dt, m, engine.bands, lightFX);
   updateBooth(booth, engine, dt, engine.now);
   if (people) {
-    people.update(dt, m, engine.now, camera.position, engine, input);
+    people.update(dt, m, engine.now, camera, engine, input);
     const p = marker.userData.p;
     if (p) marker.position.set(p.pos.x, p.pos.y + 0.03, p.pos.z);
   }
@@ -520,10 +526,14 @@ function loop() {
   fpsN++;
   if (fpsAcc > 2) {
     const fps = fpsN / fpsAcc;
-    $('fps').textContent = `${Math.round(fps)} fps · ${Math.round(dpr * 100)}% res${people ? ' · ' + people.people.length + ' people' : ''}`;
+    $('fps').textContent = `${Math.round(fps)} fps · ${Math.round(dpr * 100)}% res${bloom.enabled ? '' : ' · no bloom'} · ${renderer.info.render.calls} draws${people ? ' · ' + people.people.length + ' people' : ''}`;
     if (quality === 'auto') {
-      if (fps < 52 && dpr > 0.55) dpr = Math.max(0.55, dpr - 0.1);
-      else if (fps > 59 && dpr < maxDpr) dpr = Math.min(maxDpr, dpr + 0.05);
+      // ladder: lower resolution, then drop bloom, then lower resolution further
+      if (fps < 50) {
+        if (dpr > 0.75) dpr = Math.max(0.75, dpr - 0.15);
+        else if (bloom.enabled) bloom.enabled = false;
+        else if (dpr > 0.55) dpr = Math.max(0.55, dpr - 0.1);
+      } else if (fps > 58 && bloom.enabled && dpr < Math.min(1, maxDpr)) dpr = Math.min(1, dpr + 0.05);
       if (Math.abs(renderer.getPixelRatio() - dpr) > 0.01) {
         renderer.setPixelRatio(dpr);
         resize();
@@ -532,6 +542,7 @@ function loop() {
     fpsAcc = 0;
     fpsN = 0;
   }
+  renderer.info.reset();
   composer.render(dt);
   updateHUD(m, dt);
 
