@@ -5,17 +5,22 @@
 export const FPS = 200; // analysis frames per second (5 ms)
 const SR = 22050;
 
+const yieldUI = () => new Promise((r) => setTimeout(r, 0));
 export async function analyzeBuffer(buffer, onProgress = () => {}) {
   onProgress(0.05, 'Splitting frequency bands');
   const bands = await renderBands(buffer);
   onProgress(0.35, 'Building waveform');
+  await yieldUI();
   const env = envelopes(bands);
   onProgress(0.5, 'Detecting tempo');
+  await yieldUI();
   const onset = onsetCurve(env.low, env.full);
   const { bpm, phase } = detectTempo(onset);
   onProgress(0.7, 'Finding downbeats');
+  await yieldUI();
   const grid = buildGrid(bpm, phase, buffer.duration, env, onset);
   onProgress(0.85, 'Mapping song structure');
+  await yieldUI();
   const structure = mapStructure(grid, env, buffer.duration);
   onProgress(1, 'Done');
   return {

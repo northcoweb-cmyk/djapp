@@ -200,11 +200,19 @@ export function buildClub(scene) {
   box(14, STAGE.y, 4, mats.dark, 0, STAGE.y / 2, -8);
   const lip = box(14, 0.06, 0.06, new THREE.MeshBasicMaterial({ color: 0x5522ff, toneMapped: false }), 0, STAGE.y + 0.03, -5.97);
   lip.userData.led = true;
-  wall(-7, -10, 7, -6.0);
+  wall(-7, -6.3, 7, -6.0); // stage front edge (use the side stairs)
+  wall(-1.2, -8.45, 1.2, -7.55); // DJ booth table
   // stairs (both sides)
   for (const s of [-1, 1]) {
-    for (let i = 0; i < 4; i++) box(1.2, (STAGE.y * (i + 1)) / 4, 0.32, mats.dark, s * (7.6 + (3 - i) * 0.0), (STAGE.y * (i + 1)) / 8, -6.2 - i * 0.6).scale.set(1, 1, 1.9);
-    box(0.04, 1.0, 2.6, mats.steel, s * 8.25, STAGE.y + 0.3, -7.3); // handrail
+    for (let i = 0; i < 4; i++) {
+      const h = (STAGE.y * (i + 1)) / 4;
+      box(0.33, h, 2.5, mats.dark, s * (8.3 - 0.165 - i * 0.325), h / 2, -7.3);
+      box(0.33, 0.02, 2.5, mats.steel, s * (8.3 - 0.165 - i * 0.325), h + 0.01, -7.3); // step nosing
+    }
+    for (const z of [-8.58, -6.02]) {
+      box(1.3, 0.04, 0.04, mats.steel, s * 7.65, STAGE.y + 0.55, z);
+      for (const x of [7.05, 8.25]) box(0.04, 1.0, 0.04, mats.steel, s * x, 0.6, z);
+    }
   }
   // barrier (crowd control)
   for (let x = -6.8; x <= 6.8; x += 1.0) {
@@ -384,6 +392,7 @@ export function buildClub(scene) {
     // booth monitors
     const mon = box(0.5, 0.7, 0.45, spkMat, s * 2.1, STAGE.y + 0.35, -7.6);
     mon.rotation.y = -s * 0.5;
+    wall(s * 2.1 - 0.3, -7.85, s * 2.1 + 0.3, -7.35);
   }
 
   // ---------- bar ----------
@@ -576,6 +585,70 @@ export function buildClub(scene) {
   };
   camRig(0, STAGE.y + 1.25, -7.25, Math.PI); // fisheye cam in front of the decks (faces the DJ)
   camRig(-11.9, 5.3, 0, -Math.PI / 2 - 0.2); // balcony cam
+
+  // ---------- detail pass (all static, merged into a handful of draw calls) ----------
+  const foam = new THREE.MeshStandardMaterial({ color: 0x15131a, roughness: 1 });
+  for (const sx of [-1, 1])
+    for (let z = -8.6; z <= 8.7; z += 1.12)
+      for (let y = 1.4; y <= 5.3; y += 1.12) {
+        if (sx < 0 && z > 5.6 && y < 3.2) continue; // entrance
+        if (sx > 0 && z > -3.6 && z < 9 && y < 2.2) continue; // lounge couches
+        const p = box(1.04, 1.04, 0.02, foam, sx * 14.99, y, z);
+        p.rotation.y = Math.PI / 2;
+      }
+  const ductM = new THREE.MeshStandardMaterial({ color: 0x3a3c42, metalness: 0.8, roughness: 0.45 });
+  for (const sx of [-1, 1]) {
+    const d = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 18, 16), ductM);
+    d.rotation.x = Math.PI / 2;
+    d.position.set(sx * 12.2, 7.45, 0);
+    g.add(d);
+    for (let z = -8; z <= 8; z += 2) {
+      box(0.04, 0.5, 0.04, ductM, sx * 12.2, 7.85, z);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.025, 6, 16), ductM);
+      ring.position.set(sx * 12.2, 7.45, z);
+      g.add(ring);
+    }
+    box(0.08, 0.06, 18, mats.steel, sx * 14.7, 6.6, 0); // cable tray
+  }
+  const parLens = new THREE.MeshBasicMaterial({ color: 0x5a2cff, toneMapped: false });
+  for (let i = 0; i < 12; i++) {
+    const x = -8.25 + i * 1.5;
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 0.26, 12), mats.dark);
+    can.position.set(x, 6.62, -4.3);
+    can.rotation.x = 0.6;
+    g.add(can);
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.1, 12), parLens);
+    lens.position.set(x, 6.55, -4.21);
+    lens.rotation.x = Math.PI / 2 + 0.6;
+    g.add(lens);
+  }
+  const glassM = new THREE.MeshStandardMaterial({ color: 0xc8d4e0, roughness: 0.1, metalness: 0.3 });
+  for (let i = 0; i < 28; i++) {
+    const gl = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.12, 8), glassM);
+    gl.position.set(-6.5 + i * 0.48, 1.06, 9.6);
+    g.add(gl);
+  }
+  box(0.35, 0.25, 0.04, new THREE.MeshBasicMaterial({ color: 0x2a60ff, toneMapped: false }), 6.4, 1.3, 8.55); // POS screen
+  for (const x of [-3, 3]) box(0.6, 0.02, 0.4, new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.9 }), x, 1.165, 8.3); // bar mats
+  const red = new THREE.MeshStandardMaterial({ color: 0xb01010, roughness: 0.4 });
+  for (const [x, y, z] of [[-14.65, 0.3, 5.9], [14.65, 0.3, -8.0], [7.9, 1.3, -10.4]]) {
+    const ex = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.55, 12), red);
+    ex.position.set(x, y, z);
+    g.add(ex);
+  }
+  const trim = mats.chrome;
+  box(18.1, 0.025, 0.05, trim, 0, 0.012, -5.56);
+  box(18.1, 0.025, 0.05, trim, 0, 0.012, 4.96);
+  box(0.05, 0.025, 10.55, trim, -9.03, 0.012, -0.3);
+  box(0.05, 0.025, 10.55, trim, 9.03, 0.012, -0.3);
+  const rug = new THREE.Mesh(new THREE.PlaneGeometry(4, 2.4), new THREE.MeshStandardMaterial({ color: 0x3a0f1a, roughness: 1 }));
+  rug.rotation.x = -Math.PI / 2;
+  rug.position.set(-3, STAGE.y + 0.005, -12.6);
+  g.add(rug);
+  box(0.04, 1.6, 0.04, mats.steel, -6.2, STAGE.y + 0.8, -13.5);
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.3, 14, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd9a0, toneMapped: false, side: THREE.DoubleSide }));
+  shade.position.set(-6.2, STAGE.y + 1.65, -13.5);
+  g.add(shade);
 
   const merged = mergeStatic(g, [pix, ledWall, tiles, bottles, ...heads.map((h) => h.fix), ...lasers, ...strobes]);
   console.info('club meshes merged', merged);

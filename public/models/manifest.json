@@ -2,39 +2,48 @@
  "chars": {
   "dj": {
    "file": "chars/dj.glb",
-   "height": 178.47
+   "height": 178.47,
+   "lo": "chars/dj_lo.glb"
   },
   "owner": {
    "file": "chars/owner.glb",
-   "height": 176.4
+   "height": 176.4,
+   "lo": "chars/owner_lo.glb"
   },
   "guard": {
    "file": "chars/guard.glb",
-   "height": 178.4
+   "height": 178.4,
+   "lo": "chars/guard_lo.glb"
   },
   "bartender": {
    "file": "chars/bartender.glb",
-   "height": 178.23
+   "height": 178.23,
+   "lo": "chars/bartender_lo.glb"
   },
   "m42": {
    "file": "chars/m42.glb",
-   "height": 180.12
+   "height": 180.12,
+   "lo": "chars/m42_lo.glb"
   },
   "f02": {
    "file": "chars/f02.glb",
-   "height": 176.36
+   "height": 176.36,
+   "lo": "chars/f02_lo.glb"
   },
   "f22": {
    "file": "chars/f22.glb",
-   "height": 175.2
+   "height": 175.2,
+   "lo": "chars/f22_lo.glb"
   },
   "f37": {
    "file": "chars/f37.glb",
-   "height": 174.17
+   "height": 174.17,
+   "lo": "chars/f37_lo.glb"
   },
   "twerk": {
    "file": "chars/twerk.glb",
-   "height": 378.48
+   "height": 378.48,
+   "lo": "chars/twerk_lo.glb"
   }
  },
  "clips": {

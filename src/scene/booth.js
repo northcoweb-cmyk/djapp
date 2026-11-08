@@ -344,6 +344,8 @@ function drawCDJScreen(d, deck, now) {
   g.fillStyle = '#3a8bff';
   g.fillText(`DECK ${deck.index + 1}`, 8, 20);
   if (!tr || !tr.analysis) {
+    if (d.emptyDrawn) return;
+    d.emptyDrawn = true;
     g.fillStyle = '#666';
     g.font = 'bold 26px Arial';
     g.fillText('NO TRACK', W / 2 - 70, H / 2);
@@ -352,6 +354,7 @@ function drawCDJScreen(d, deck, now) {
     d.screen.tex.needsUpdate = true;
     return;
   }
+  d.emptyDrawn = false;
   const A = tr.analysis;
   const pos = deck.position;
   g.fillStyle = '#fff';
@@ -468,9 +471,10 @@ function drawJogCenter(d, deck) {
   d.center.tex.needsUpdate = true;
 }
 
-export function updateBooth(booth, engine, dt, now) {
+export function updateBooth(booth, engine, dt, now, camPos) {
   booth.wfT += dt;
-  const redraw = booth.wfT > 1 / 12;
+  const near = !camPos || camPos.distanceTo(booth.group.position) < 9;
+  const redraw = booth.wfT > (near ? 1 / 12 : 1 / 2);
   if (redraw) booth.wfT = 0;
   booth.decks.forEach((d, i) => {
     const deck = engine.decks[i];

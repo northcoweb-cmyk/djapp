@@ -8,7 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { analyzeBuffer } from './audio/analyzer.js';
 import { AudioEngine } from './audio/engine.js';
 import { AutoDJ } from './audio/autodj.js';
-import { buildClub, updateClub, STAGE } from './scene/club.js';
+import { buildClub, updateClub, STAGE, zoneAt } from './scene/club.js';
 import { buildBooth, updateBooth, controlWorldPos } from './scene/booth.js';
 import { loadAssets, PeopleSim } from './scene/people.js';
 
@@ -22,7 +22,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.info.autoReset = false;
 const maxDpr = Math.min(window.devicePixelRatio || 1, 1.5);
-let dpr = Math.min(1, maxDpr);
+let dpr = Math.min(0.85, maxDpr);
 renderer.setPixelRatio(dpr);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x030208);
@@ -142,7 +142,11 @@ async function loadSaved() {
 }
 
 // file inputs + drag/drop
-for (const id of ['file', 'file2']) $(id).addEventListener('change', (e) => addFiles([...e.target.files]));
+for (const id of ['file', 'file2']) $(id).addEventListener('change', (e) => {
+  addFiles([...e.target.files]);
+  e.target.value = '';
+});
+$('addBtn').addEventListener('click', () => $('file2').click());
 const dropEl = $('drop');
 window.addEventListener('dragover', (e) => {
   e.preventDefault();
@@ -270,7 +274,11 @@ document.querySelectorAll('#cams button').forEach((b) =>
     fisheye.enabled = camMode === 'fisheye';
     camera.fov = camMode === 'fisheye' ? 115 : camMode === 'drone' ? 75 : camMode === 'phone' ? 68 : 60;
     camera.updateProjectionMatrix();
-    if (camMode === 'phone' && people) phoneHolder = pickFilmer();
+    if (phoneHolder) phoneHolder.forceAnim = false;
+    if (camMode === 'phone' && people) {
+      phoneHolder = pickFilmer();
+      if (phoneHolder) phoneHolder.forceAnim = true;
+    }
   })
 );
 const marker = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.34, 32), new THREE.MeshBasicMaterial({ color: 0xff3a8a, toneMapped: false, transparent: true, opacity: 0.9 }));
@@ -299,6 +307,7 @@ const droneWP = [
   [3, 4.5, -3],
 ].map((a) => new THREE.Vector3(...a));
 let phoneHolder = null;
+let boothHint = false;
 function pickFilmer() {
   const c = people.crowd.filter((p) => p.state === 'dance').sort((a, b) => a.home.z - b.home.z);
   const mid = c.slice(Math.floor(c.length * 0.35), Math.floor(c.length * 0.8));
@@ -366,6 +375,18 @@ function updateCamera(dt, t, m) {
   }
   if (camMode === 'play' && people) {
     const p = people.player;
+    if (zoneAt(p.pos.x, p.pos.z) === 'booth') {
+      // next to the DJ: over-the-shoulder view of the decks and his hands
+      const side = p.pos.x >= 0 ? 1 : -1;
+      tv2.set(p.pos.x + side * 0.25, p.pos.y + 2.0, Math.min(p.pos.z, -8.55) - 0.25);
+      camera.position.lerp(tv2, Math.min(1, dt * 7));
+      camera.lookAt(side * 0.2, booth.topY + 0.05, -7.95);
+      if (!boothHint) {
+        boothHint = true;
+        toast('You are in the DJ booth', 'Watching the decks. Walk out to leave.', 1.2);
+      }
+      return;
+    }
     const back = new THREE.Vector3(Math.sin(input.camYaw), 0, Math.cos(input.camYaw));
     const dist = 3.2;
     const target = tv.copy(p.pos).add(new THREE.Vector3(0, 1.65, 0));
@@ -381,10 +402,11 @@ function updateCamera(dt, t, m) {
 // ---------------- HUD ----------------
 const SECTION_COL = { intro: '#555b66', groove: '#2fa860', build: '#e8c020', drop: '#e83a3a', breakdown: '#3a6aff', outro: '#555b66', idle: '#333' };
 const hypeHistory = [];
+let lastDropsHtml = '';
 let hudT = 0;
 function updateHUD(m, dt) {
   hudT += dt;
-  if (hudT < 0.1) return;
+  if (hudT < 0.25) return;
   hudT = 0;
   const crowdHype = people ? people.avg('hype') : 0;
   $('hypeBar').style.width = `${Math.round(crowdHype * 100)}%`;
@@ -427,9 +449,10 @@ function updateHUD(m, dt) {
           marker.visible = false;
         };
     } else $('who').textContent = `${people.crowd.length} people · click anyone to see their brain`;
-    $('drops').innerHTML = people.dropLog
+    const dropsHtml = people.dropLog
       .map((d) => `<li>${escapeHtml(d.track.slice(0, 22))} @${fmt(d.time)} · ${d.score === null ? '…' : d.score + '/100 ' + (d.score > 75 ? '🔥 massive' : d.score > 50 ? 'solid' : 'flat')}</li>`)
       .join('');
+    if (dropsHtml !== lastDropsHtml) $('drops').innerHTML = lastDropsHtml = dropsHtml;
   }
   drawTimeline(m);
 }
@@ -499,7 +522,7 @@ function loop() {
   lightFX.impact = m.playing && since >= 0 && since < m.barSec * 2 ? (1 - since / (m.barSec * 2)) * (0.6 + 0.4 * (lightFX.dropStrength || 1)) : 0;
   lightFX.strobe = m.playing && ((m.section === 'build' && m.toDrop < m.barSec) || (since >= 0 && since < m.barSec * 0.5)) ? 1 : 0;
   updateClub(club, t, dt, m, engine.bands, lightFX);
-  updateBooth(booth, engine, dt, engine.now);
+  updateBooth(booth, engine, dt, engine.now, camera.position);
   if (people) {
     people.update(dt, m, engine.now, camera, engine, input);
     const p = marker.userData.p;

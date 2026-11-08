@@ -126,6 +126,12 @@ button {
   flex-wrap: wrap;
   justify-content: center;
 }
+#addBtn {
+  background: linear-gradient(90deg, #4a2cff, #9a2cff);
+  border: 0;
+  font-weight: 700;
+  cursor: pointer;
+}
 #deckTag {
   color: var(--blue);
   font-weight: 700;

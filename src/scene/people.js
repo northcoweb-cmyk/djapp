@@ -45,6 +45,11 @@ export async function loadAssets(base, onProgress = () => {}) {
       const gltf = await loader.loadAsync(base + 'models/' + c.file);
       prepCharacter(gltf.scene);
       chars[id] = { scene: gltf.scene, height: c.height, unit: c.height / 176 };
+      if (c.lo) {
+        const lo = await loader.loadAsync(base + 'models/' + c.lo);
+        prepCharacter(lo.scene);
+        chars[id].lo = lo.scene;
+      }
       tick();
     }),
     ...Object.entries(man.clips).map(async ([id, c]) => {
@@ -181,7 +186,7 @@ export class Person {
     this.female = FEMALE.includes(type);
     this.name = o.name || pick(this.female ? NAMES_F : NAMES_M);
     const tpl = sim.assets.chars[type];
-    this.obj = SkeletonUtils.clone(tpl.scene);
+    this.obj = SkeletonUtils.clone(o.lo && tpl.lo ? tpl.lo : tpl.scene);
     this.root = new THREE.Group();
     this.root.add(this.obj);
     this.height = o.height || (this.female ? rand(1.62, 1.76) : rand(1.72, 1.88));
@@ -196,6 +201,16 @@ export class Person {
       }
     });
     this.unit = tpl.unit;
+    // only recompute + upload bone matrices on frames where this person actually animated
+    if (sk) {
+      const orig = sk.update.bind(sk);
+      sk.update = () => {
+        if (this.dirty !== false) {
+          orig();
+          this.dirty = false;
+        }
+      };
+    }
     if (o.outfit !== false) this.dress(o.outfit || {});
     this.mixer = new THREE.AnimationMixer(this.obj);
     this.actions = {};
@@ -392,7 +407,7 @@ export class PeopleSim {
       let type = female ? pick(FEMALE) : pick(MALE);
       if (female && style === 'jumper' && Math.random() < 0.25 && type === 'twerk') style = 'twerker';
       const height = front ? (female ? rand(1.7, 1.8) : rand(1.82, 1.94)) : female ? rand(1.6, 1.74) : rand(1.7, 1.86);
-      const p = this.add(type, { x, z, yaw: Math.PI + rand(-0.35, 0.35), style, height });
+      const p = this.add(type, { x, z, yaw: Math.PI + rand(-0.35, 0.35), style, height, lo: true });
       p.home.set(x, 0, z);
       p.pusher = front ? false : Math.random() < 0.06;
       if (style === 'filmer') {
@@ -408,7 +423,7 @@ export class PeopleSim {
     for (let i = 0; i < nL; i++) {
       const s = loungeSeats[i];
       const female = Math.random() < 0.55;
-      const p = this.add(female ? pick(FEMALE) : pick(MALE), { x: s.x, z: s.z, yaw: s.ry, style: 'swayer' });
+      const p = this.add(female ? pick(FEMALE) : pick(MALE), { x: s.x, z: s.z, yaw: s.ry, style: 'swayer', lo: true });
       p.state = 'lounge';
       p.seat = s;
       s.taken = p;
@@ -540,7 +555,7 @@ export class PeopleSim {
       _sphere.center.y += 1;
       _sphere.radius = 1.3;
       const vis = _frustum.intersectsSphere(_sphere);
-      const rate = p.role === 'dj' || p.role === 'player' ? 1 : !vis ? 8 : dist < 9 ? 1 : dist < 17 ? 2 : 3;
+      const rate = p.role === 'dj' || p.role === 'player' || p.forceAnim ? 1 : !vis ? 8 : dist < 8 ? 1 : dist < 15 ? 2 : 3;
       p.acc = (p.acc || 0) + dt;
       const doAnim = (this.frame + p.id) % rate === 0;
       if (p.role === 'crowd') this.updateCrowd(p, dt, m, sec, ctxNow, beatPhase, engine);
@@ -548,8 +563,11 @@ export class PeopleSim {
       else if (p.role === 'guard') this.updateGuard(p, dt);
       else if (p.role === 'dancer') this.updateDancer(p, dt, m);
       else if (p.role === 'player') this.updatePlayer(p, dt, input);
-      p.place();
+      // people that don't animate this frame skip matrix + bone updates entirely
+      p.root.matrixWorldAutoUpdate = doAnim;
       if (!doAnim) continue;
+      p.place();
+      p.dirty = true;
       p.mixer.update(p.acc);
       p.acc = 0;
       // procedural head bob on the beat (after the clip pose)
