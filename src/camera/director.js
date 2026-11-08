@@ -187,8 +187,10 @@ export class Director {
         let hy = 2.75;
         if (people) {
           people.dj.head(v1);
-          hx = v1.x;
-          hy = v1.y;
+          if (Number.isFinite(v1.x + v1.y)) {
+            hx = v1.x;
+            hy = v1.y;
+          }
         }
         const ang = Math.sin(t * 0.18 + S) * 0.45;
         const r = 2.6 - Math.min(1, t / 14) * 0.7;
@@ -260,6 +262,7 @@ export class Director {
       case 'djpov': {
         if (!people) break;
         people.dj.head(v1);
+        if (!Number.isFinite(v1.x + v1.y + v1.z)) v1.set(0, 2.75, -8.72);
         cam.position.set(v1.x, v1.y + 0.06, v1.z + 0.1);
         this.look(people.dj.pos.x * 0.5, 1.15, -3.5, dt, 5);
         break;

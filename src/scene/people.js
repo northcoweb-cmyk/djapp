@@ -1228,12 +1228,12 @@ export class PeopleSim {
       else if (jumping) {
         goal = _tmpU.set(p.pos.x + (side === 'left' ? 0.28 : -0.28), _v2.y + 0.45, -8.55);
       } else if (side === 'right' && now < M.handUpUntil) {
-        const sw = Math.sin(Math.PI * (m.beat + m.beatFrac) * 0.5);
+        const sw = m.playing ? Math.sin(Math.PI * (m.beat + m.beatFrac) * 0.5) : Math.sin(now * 2);
         goal = _tmpU.set(p.pos.x - 0.15 + sw * 0.28, _v2.y + 0.42, -8.45);
       } else if (side === 'left' && cueing) {
         goal = _tmpU.set(_v2.x + 0.12, _v2.y + 0.02, _v2.z + 0.04);
       }
-      if (!h.cur) h.cur = goal.clone();
+      if (!h.cur || !Number.isFinite(h.cur.x + h.cur.y + h.cur.z)) h.cur = goal.clone();
       const dist = h.cur.distanceTo(goal);
       h.cur.lerp(goal, Math.min(1, dt * (active ? 8 : 4)));
       // a little arc while travelling across the gear
@@ -1248,7 +1248,8 @@ export class PeopleSim {
     const spine = p.bones.Spine1;
     if (spine) {
       const lx = (this.djHands.left.cur ? this.djHands.left.cur.x : 0) + (this.djHands.right.cur ? this.djHands.right.cur.x : 0);
-      spine.rotation.y += Math.max(-0.25, Math.min(0.25, (lx / 2 - p.pos.x) * 0.5));
+      const lean = (lx / 2 - p.pos.x) * 0.5;
+      if (Number.isFinite(lean)) spine.rotation.y += Math.max(-0.25, Math.min(0.25, lean));
       spine.rotation.x += 0.12;
     }
   }
@@ -1345,11 +1346,16 @@ const _q = new THREE.Quaternion();
 const _wq = new THREE.Quaternion();
 const _qa = new THREE.Quaternion();
 const _qf = new THREE.Quaternion();
+const _sa = new THREE.Quaternion();
+const _sf = new THREE.Quaternion();
+const finiteQ = (q) => Number.isFinite(q.x + q.y + q.z + q.w);
 export function ik(chain, target, weight) {
   const [arm, fore, hand] = chain;
-  if (!arm || !fore || !hand || weight <= 0.01) return;
+  if (!arm || !fore || !hand || weight <= 0.01 || !Number.isFinite(target.x + target.y + target.z)) return;
   _qa.copy(arm.quaternion);
   _qf.copy(fore.quaternion);
+  _sa.copy(arm.quaternion);
+  _sf.copy(fore.quaternion);
   arm.updateMatrixWorld(true);
   for (let it = 0; it < 5; it++) {
     for (const bone of [fore, arm]) {
@@ -1372,5 +1378,10 @@ export function ik(chain, target, weight) {
   }
   arm.quaternion.copy(_qa.slerp(arm.quaternion, weight));
   fore.quaternion.copy(_qf.slerp(fore.quaternion, weight));
+  if (!finiteQ(arm.quaternion) || !finiteQ(fore.quaternion)) {
+    // never let a degenerate solve corrupt the pose
+    arm.quaternion.copy(_sa);
+    fore.quaternion.copy(_sf);
+  }
   arm.updateMatrixWorld(true);
 }

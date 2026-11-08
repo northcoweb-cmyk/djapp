@@ -213,6 +213,12 @@ $('enter').addEventListener('click', async () => {
       if (d) d.userData.target = open ? 1.4 : 0;
     };
   }
+  // compile every shader up front so camera cuts never stutter on first use
+  $('enter').textContent = 'Warming up…';
+  try {
+    if (renderer.compileAsync) await renderer.compileAsync(scene, camera);
+    else renderer.compile(scene, camera);
+  } catch (e) {}
   $('start').style.display = 'none';
   $('hud').hidden = false;
   engine.murmur(1);
