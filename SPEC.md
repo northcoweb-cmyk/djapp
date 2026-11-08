@@ -176,3 +176,26 @@ Still to do for the ears: tune fill-vs-drop on Good Girl; detect vocal sections 
 ## Character models
 - Cloud sandbox can only reach GitHub (Mixamo, Sketchfab, Quaternius, Poly Pizza and CDNs are blocked). The only models I can fetch myself are the three.js sample characters (Michelle, Xbot, Soldier), which are low-poly and **not** realistic enough.
 - Plan: the user downloads realistic rigged characters (GLB) and drops them in `public/models/`. The code is built to load them and fall back to the sample characters.
+
+---
+
+# Round 3: models, performance, sing-along
+
+## Uploaded models (checked)
+The four Sketchfab downloads (Quiet Moment with a Phone, Stride Forward, Holding Hands on a Casual Walk, Man Base Mesh) have **no skeleton and no animation** (0 skins, 0 animations). Three are 170k–257k-vertex, ~280–415k-triangle, single-pose scans; the base mesh is an unrigged sculpt. They cannot be made to dance, and one of them alone costs more than the whole crowd budget below. Not used in the build. All are CC-BY-4.0: if any asset is used, credit its author in the UI credits and in README.
+
+## Character pipeline
+- Need **rigged humanoids with the Mixamo skeleton** (`mixamorig*` bones) so one animation set retargets to every character.
+- User downloads from Mixamo (the sandbox can't reach it): characters as FBX *with skin*, plus animations as FBX *without skin*. Put them in `public/models/` (or drag them into chat).
+- Animations wanted: idle, house/hip-hop dance variants, jump, head bob, arms up, clap, cheer, drink, talk, phone filming, texting, walk, shove-past, bartender making drinks, DJ idle/nod.
+- Dev placeholder: the three.js sample `Michelle.glb` (Mixamo rig, reachable on GitHub raw) to build and test the animation system before the real models arrive.
+
+## Performance budget (target 60 fps on a Dell XPS; assume integrated GPU)
+- Crowd LOD: ~30 near people fully skinned (≤15k tris each), ~70 mid (≤5k tris, animation updated at half rate), ~100 far (≤1.5k tris, GPU-instanced with vertex-animation textures).
+- Whole scene under ~1.2M triangles. Textures capped at 1–2k and compressed.
+- Lights: no per-fixture real lights. Use ≤4 real lights, additive beam cones, emissive LED surfaces and baked light. Half-resolution bloom.
+- Auto quality: pixel ratio and effects scale down automatically to hold 60 fps. Low / Medium / High presets plus an FPS counter.
+
+## Sing-along (honest scope)
+- Lyrics can't be reliably transcribed from music in the browser. Crowd sings **hook melodies on vowels ("oh", "ah", "hey") and chants**, pitch-tracked from the song's vocal band, locked to the beat grid, in male and female voice colours (formant-synthesized).
+- Optional per-song `hooks` file (user-supplied short hook text + start time) enables on-screen words and mouth movement timed to the hook.
