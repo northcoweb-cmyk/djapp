@@ -477,6 +477,36 @@ export function buildRooms(g, H) {
   g.add(ex);
   box(0.05, 2.1, 1.0, new THREE.MeshLambertMaterial({ color: 0x3a3a40 }), 8.03, STAGE.y + 1.05, -12.6);
 
+  // ================= ENTRANCE: coat check, ID podium, ATM, vending =================
+  box(1.7, 1.05, 0.5, mats.wood, -13.2, 0.52, 9.2);
+  box(1.8, 0.05, 0.6, granite, -13.2, 1.07, 9.2);
+  box(1.7, 0.012, 0.02, led.warm, -13.2, 1.03, 8.94);
+  box(2.4, 0.03, 0.03, mats.chrome, -13.2, 2.05, 9.85);
+  const coatCols = [0x1a1a1a, 0x3a2a1a, 0x22304a, 0x4a1a1a, 0x2a2a2a, 0x5a4a3a, 0x101820, 0x3a3a3a];
+  for (let i = 0; i < 12; i++) box(0.08, 0.85, 0.42, new THREE.MeshLambertMaterial({ color: coatCols[i % coatCols.length] }), -14.3 + i * 0.19, 1.6, 9.82);
+  const ccWash = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.0), warmWash);
+  ccWash.position.set(-13.2, 1.6, 9.97);
+  ccWash.rotation.y = Math.PI;
+  g.add(ccWash);
+  const cc = neonSign('COAT CHECK', '#ffd08a', 1.5, 0.34, 'bold 110px Arial');
+  cc.position.set(-13.2, 3.0, 9.96);
+  cc.rotation.y = Math.PI;
+  g.add(cc);
+  box(0.5, 1.1, 0.4, mats.black, -12.9, 0.55, 5.8);
+  box(0.26, 0.02, 0.18, basic(0x5a8aff), -12.9, 1.11, 5.8);
+  box(0.6, 1.7, 0.45, new THREE.MeshLambertMaterial({ color: 0x2a2a30 }), -11.1, 0.85, 9.72);
+  box(0.36, 0.24, 0.02, basic(0x30c060), -11.1, 1.25, 9.49);
+  box(0.9, 1.9, 0.6, mats.black, -9.6, 0.95, 9.65);
+  const vend = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 1.4), basic(0xffffff, { map: fridgeTex }));
+  vend.material.color.setScalar(0.7);
+  vend.position.set(-9.6, 1.05, 9.34);
+  vend.rotation.y = Math.PI;
+  g.add(vend);
+  const art = neonSign('HOUSE MUSIC ALL NIGHT', '#ff3cc8', 5.2, 0.7, 'bold 100px Helvetica, Arial');
+  art.position.set(-10.3, 5.6, 9.95);
+  art.rotation.y = Math.PI;
+  g.add(art);
+
   // ================= CO2 CANNONS + GOBOS =================
   const cannons = [-6, -2.5, 2.5, 6].map((x) => {
     box(0.22, 0.24, 0.22, mats.black, x, STAGE.y + 0.12, -6.4);

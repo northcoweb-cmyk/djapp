@@ -10,7 +10,7 @@ import { AutoDJ } from './audio/autodj.js';
 import { Library } from './audio/library.js';
 import { buildClub, updateClub } from './scene/club.js';
 import { buildBooth, updateBooth, controlWorldPos } from './scene/booth.js';
-import { loadAssets, PeopleSim } from './scene/people.js';
+import { loadAssets, PeopleSim, ik } from './scene/people.js';
 import { Director } from './camera/director.js';
 import { Hud } from './ui/hud.js';
 
@@ -343,6 +343,7 @@ function loop() {
   }
 }
 loop();
+window.__ik = ik;
 window.__sim = {
   camera,
   scene,

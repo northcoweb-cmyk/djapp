@@ -74,6 +74,8 @@ export function rebuildNav() {
   // lounge rope (gap at z 2.2..3.0), couches, tables
   B0.push(R(10.45, -3, 10.55, 2.2), R(10.45, 3.0, 10.55, 8.5));
   for (const zc of [-1.6, 2.4, 6.4]) B0.push(R(13.45, zc - 1.4, 14.7, zc + 1.4), R(12.1, zc - 0.5, 13.1, zc + 0.5));
+  // entrance: coat check counter, ID podium, ATM, vending machine
+  B0.push(R(-14.1, 8.9, -12.3, 9.5), R(-13.2, 5.55, -12.6, 6.05), R(-11.45, 9.45, -10.75, 10), R(-10.1, 9.3, -9.1, 10));
   // backstage furniture
   B0.push(R(-5.2, -14, -2.8, -12.9), R(2.5, -13.8, 4.5, -13.0), R(6.2, -13.95, 7.0, -13.25));
   // balcony support pillars + stairs (rails, under-stair storage)

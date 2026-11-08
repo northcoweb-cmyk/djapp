@@ -545,7 +545,7 @@ export class PeopleSim {
       if (Math.random() < 0.5) p.hold('cocktail');
     });
     // the DJ (Ch38): white shirt, black bottoms, black cap, sunglasses, silver watch, headphones
-    const dj = this.add('dj', { x: 0, z: -8.72, yaw: 0, role: 'dj', outfit: { top: 0xffffff, bottom: 0x0b0b0b, socks: 0x0b0b0b, shoes: 0x111111, hair: 0x15100c, solidTop: false }, height: 1.83 });
+    const dj = this.add('dj', { x: 0, z: -8.48, yaw: 0, role: 'dj', outfit: { top: 0xffffff, bottom: 0x0b0b0b, socks: 0x0b0b0b, shoes: 0x111111, hair: 0x15100c, solidTop: false }, height: 1.83 });
     dj.state = 'dj';
     dj.play('idle', 0, 0.9);
     const black = new THREE.MeshLambertMaterial({ color: 0x0a0a0a });
@@ -596,8 +596,10 @@ export class PeopleSim {
   gesture(e, controlPos) {
     const left = e.deck === 0 || e.deck === 1;
     const h = e.control === 'rmx' || e.deck < 0 ? this.djHands.right : left ? this.djHands.left : this.djHands.right;
+    // aim the wrist a little short of the control so the fingertips land on it
     h.target.copy(controlPos);
-    h.target.y += 0.03;
+    h.target.y += 0.06;
+    h.target.z -= 0.08;
     h.start = e.when;
     h.until = e.when + Math.max(0.7, e.dur);
     this.djMode.targetX = Math.max(-0.5, Math.min(0.5, controlPos.x * 0.6));
@@ -1196,7 +1198,7 @@ export class PeopleSim {
     if (!busy) M.targetX *= Math.max(0, 1 - dt * 0.3);
     const dx = tx - p.pos.x;
     p.pos.x += Math.sign(dx) * Math.min(Math.abs(dx), dt * 0.7);
-    p.pos.z = -8.72;
+    p.pos.z = -8.48;
     p.yaw += wrapPi(0 - p.yaw) * dt * 3;
     p.yOff = 0;
     if (now > M.jumpStart && now < M.jumpUntil && m.playing) {
@@ -1210,8 +1212,8 @@ export class PeopleSim {
     const M = this.djMode;
     p.root.updateMatrixWorld(true);
     p.head(_v2);
-    const restL = _tmpL.set(p.pos.x + 0.16, B.topY + 0.17, -8.18);
-    const restR = _tmpR.set(p.pos.x - 0.16, B.topY + 0.17, -8.18);
+    const restL = _tmpL.set(p.pos.x + 0.16, B.topY + 0.16, -8.2);
+    const restR = _tmpR.set(p.pos.x - 0.16, B.topY + 0.16, -8.2);
     const jumping = now > M.jumpStart && now < M.jumpUntil && m.playing;
     // hand up, swinging side to side with the beat (drops + grooves)
     if (m.playing && !jumping && now > M.nextHandUp && (m.section === 'drop' || m.section === 'groove') && now > this.djHands.right.until + 0.5) {
@@ -1219,12 +1221,27 @@ export class PeopleSim {
       M.nextHandUp = now + m.barSec * rand(6, 14);
     }
     const cueing = this.cueUntil && now < this.cueUntil;
+    // lean toward the hand that's working
+    const spine = p.bones.Spine1;
+    if (spine) {
+      const lx = (this.djHands.left.cur ? this.djHands.left.cur.x : 0) + (this.djHands.right.cur ? this.djHands.right.cur.x : 0);
+      const lean = (lx / 2 - p.pos.x) * 0.5;
+      if (Number.isFinite(lean)) spine.rotation.y += Math.max(-0.25, Math.min(0.25, lean));
+      // bend over the decks while reaching
+      const reaching = now <= Math.max(this.djHands.left.until, this.djHands.right.until) + 0.2;
+      M.bend = (M.bend || 0.12) + ((reaching ? 0.52 : 0.16) - (M.bend || 0.12)) * Math.min(1, dt * 4);
+      spine.rotation.x += M.bend;
+    }
+    p.root.updateMatrixWorld(true);
     for (const side of ['left', 'right']) {
       const h = this.djHands[side];
       const active = now >= (h.start || 0) - 0.3 && now <= h.until;
       let goal = side === 'left' ? restL : restR;
       let w = m.playing ? 0.9 : 0.55;
-      if (active) goal = h.target;
+      if (active) {
+        goal = h.target;
+        w = 1;
+      }
       else if (jumping) {
         goal = _tmpU.set(p.pos.x + (side === 'left' ? 0.28 : -0.28), _v2.y + 0.45, -8.55);
       } else if (side === 'right' && now < M.handUpUntil) {
@@ -1243,14 +1260,6 @@ export class PeopleSim {
       h.w += (w - h.w) * Math.min(1, dt * 3);
       const chain = side === 'left' ? ['LeftArm', 'LeftForeArm', 'LeftHand'] : ['RightArm', 'RightForeArm', 'RightHand'];
       ik(chain.map((n) => p.bones[n]), _tmpA, h.w);
-    }
-    // lean toward the hand that's working
-    const spine = p.bones.Spine1;
-    if (spine) {
-      const lx = (this.djHands.left.cur ? this.djHands.left.cur.x : 0) + (this.djHands.right.cur ? this.djHands.right.cur.x : 0);
-      const lean = (lx / 2 - p.pos.x) * 0.5;
-      if (Number.isFinite(lean)) spine.rotation.y += Math.max(-0.25, Math.min(0.25, lean));
-      spine.rotation.x += 0.12;
     }
   }
 

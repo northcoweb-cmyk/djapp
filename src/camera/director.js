@@ -194,8 +194,8 @@ export class Director {
         }
         const ang = Math.sin(t * 0.18 + S) * 0.45;
         const r = 2.6 - Math.min(1, t / 14) * 0.7;
-        cam.position.set(hx + Math.sin(ang) * r, hy - 0.15 + Math.sin(t * 0.3) * 0.05, -8.72 + Math.cos(ang) * r);
-        this.look(hx, hy - 0.25, -8.6, dt, 6);
+        cam.position.set(hx + Math.sin(ang) * r, hy - 0.15 + Math.sin(t * 0.3) * 0.05, -8.48 + Math.cos(ang) * r);
+        this.look(hx, hy - 0.25, -8.4, dt, 6);
         break;
       }
       case 'fisheye':
