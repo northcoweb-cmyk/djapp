@@ -34,6 +34,7 @@ const CLIPS = [
   ['sit', 'animations/Sitting Drinking.fbx'],
   ['talk', 'animations/Talking.fbx'],
   ['walk', 'animations/Walking.fbx'],
+  ['walkm', 'animations/Walking (1).fbx'],
   ['twerk', 'characters/Dancing_Twerk.fbx'],
 ];
 

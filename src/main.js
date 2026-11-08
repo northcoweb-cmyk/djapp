@@ -177,7 +177,7 @@ dj.on('drop', (ev) => {
   lightFX.dropAt = engine.now;
   lightFX.dropStrength = ev.drop.strength;
   if (!people) return;
-  people.onDrop(ev, engine.now);
+  people.onDrop(ev, engine.now, (4 * 60) / (dj.masterBpm || 124));
   const eu = people.avg('anticipation') + ev.drop.strength * 0.6;
   engine.cheer(Math.min(1, 0.35 + eu * 0.6));
 });
@@ -217,7 +217,7 @@ $('enter').addEventListener('click', async () => {
   resize();
   if (assetsReady && !people) {
     people = new PeopleSim(scene, window.__assets, booth);
-    people.populate(parseInt($('crowdSize').value, 10), club.loungeSeats);
+    people.populate(parseInt($('crowdSize').value, 10));
     people.onToast = toast;
   }
   $('start').style.display = 'none';
@@ -375,10 +375,11 @@ function updateCamera(dt, t, m) {
   }
   if (camMode === 'play' && people) {
     const p = people.player;
-    if (zoneAt(p.pos.x, p.pos.z) === 'booth') {
+    const py = p.root.position.y;
+    if (zoneAt(p.pos.x, p.pos.z, p.level) === 'booth') {
       // next to the DJ: over-the-shoulder view of the decks and his hands
       const side = p.pos.x >= 0 ? 1 : -1;
-      tv2.set(p.pos.x + side * 0.25, p.pos.y + 2.0, Math.min(p.pos.z, -8.55) - 0.25);
+      tv2.set(p.pos.x + side * 0.25, py + 2.0, Math.min(p.pos.z, -8.55) - 0.25);
       camera.position.lerp(tv2, Math.min(1, dt * 7));
       camera.lookAt(side * 0.2, booth.topY + 0.05, -7.95);
       if (!boothHint) {
@@ -389,11 +390,11 @@ function updateCamera(dt, t, m) {
     }
     const back = new THREE.Vector3(Math.sin(input.camYaw), 0, Math.cos(input.camYaw));
     const dist = 3.2;
-    const target = tv.copy(p.pos).add(new THREE.Vector3(0, 1.65, 0));
+    const target = tv.set(p.pos.x, py + 1.65, p.pos.z);
     const want = tv2.copy(target).addScaledVector(back, -dist * Math.cos(input.camPitch)).add(new THREE.Vector3(0, dist * Math.sin(input.camPitch), 0));
     want.x = Math.max(-14.6, Math.min(14.6, want.x));
     want.z = Math.max(-13.6, Math.min(9.6, want.z));
-    want.y = Math.max(p.pos.y + 0.6, Math.min(7.2, want.y));
+    want.y = Math.max(py + 0.6, Math.min(7.2, want.y));
     camera.position.lerp(want, Math.min(1, dt * 8));
     camera.lookAt(target);
   }
@@ -526,7 +527,7 @@ function loop() {
   if (people) {
     people.update(dt, m, engine.now, camera, engine, input);
     const p = marker.userData.p;
-    if (p) marker.position.set(p.pos.x, p.pos.y + 0.03, p.pos.z);
+    if (p) marker.position.set(p.pos.x, p.root.position.y + 0.03, p.pos.z);
   }
   // crowd sounds on the beat grid
   if (people && m.playing) {

@@ -5,38 +5,10 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeStatic } from './merge.js';
 
-export const ROOM = { x0: -15, x1: 15, z0: -10, z1: 10, h: 8 };
-export const STAGE = { x0: -7, x1: 7, z0: -10, z1: -6, y: 1.0 };
-export const BAR = { x0: -7, x1: 7, zc: 8.4 };
-export const LOUNGE = { x0: 10.2, x1: 14.6, z0: -3, z1: 8.5, y: 0.35 };
-
-// colliders: [x0, z0, x1, z1]
-export const colliders = [];
-const wall = (x0, z0, x1, z1) => colliders.push([Math.min(x0, x1), Math.min(z0, z1), Math.max(x0, x1), Math.max(z0, z1)]);
-
-export function zoneAt(x, z) {
-  if (z < -10.05) return 'backstage';
-  if (z < -6 && x > -7.6 && x < 7.6) return z < -7.4 && Math.abs(x) < 1.9 ? 'booth' : 'stage';
-  if (z > 8.85 && Math.abs(x) < 7.6) return 'barstaff';
-  if (x > 10 && z > -3.2 && z < 8.8) return 'lounge';
-  return 'floor';
-}
-export const PRIVATE = { backstage: 'Backstage', stage: 'Stage', booth: 'DJ booth', barstaff: 'Behind the bar' };
-
-export function floorY(x, z) {
-  if (z < -6 && z > -10 && Math.abs(x) < 7) return STAGE.y;
-  // stage stairs at both sides (x 7..8.2, z -8..-6)
-  if (z < -6 && z > -8.6 && Math.abs(x) >= 7 && Math.abs(x) < 8.3) return STAGE.y * Math.max(0, Math.min(1, (8.3 - Math.abs(x)) / 1.3));
-  if (z < -10.05 && z > -14) return STAGE.y; // backstage is at stage level
-  if (x > LOUNGE.x0 && z > LOUNGE.z0 && z < LOUNGE.z1) return LOUNGE.y;
-  return 0;
-}
-
-export function collides(x, z, r = 0.25) {
-  if (x < ROOM.x0 + r || x > ROOM.x1 - r || z > ROOM.z1 - r || z < -13.8 + r) return true;
-  for (const c of colliders) if (x > c[0] - r && x < c[2] + r && z > c[1] - r && z < c[3] + r) return true;
-  return false;
-}
+import { ROOM, STAGE, BAR, LOUNGE, zoneAt, PRIVATE, floorY, collides } from './nav.js';
+export { ROOM, STAGE, BAR, LOUNGE, zoneAt, PRIVATE, floorY, collides };
+// navigation obstacles now live in nav.js; wall() is kept as a no-op marker in the builder
+const wall = () => {};
 
 function canvasTex(w, h, draw, repeat) {
   const c = document.createElement('canvas');
@@ -462,11 +434,11 @@ export function buildClub(scene) {
   }
   // velvet rope + stanchions
   for (let z = -3; z <= 8.5; z += 1.6) {
-    box(0.05, 0.95, 0.05, mats.chrome, 10.1, 0.47, z);
-    if (z + 1.6 <= 8.6 && Math.abs(z - 2.6) > 0.7) {
+    box(0.05, 0.95, 0.05, mats.chrome, LOUNGE.x0, 0.47, z);
+    if (z + 1.6 <= 8.6 && !(z < 3.0 && z + 1.6 > 2.2)) {
       const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.6, 6), new THREE.MeshStandardMaterial({ color: 0x6a0f2a, roughness: 0.9 }));
       rope.rotation.x = Math.PI / 2;
-      rope.position.set(10.1, 0.82, z + 0.8);
+      rope.position.set(LOUNGE.x0, 0.82, z + 0.8);
       g.add(rope);
     }
   }

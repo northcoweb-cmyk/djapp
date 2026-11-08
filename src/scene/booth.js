@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { STAGE } from './club.js';
-import { mergeStatic } from './merge.js';
+import { mergeStatic, bakeColored } from './merge.js';
 
 const SECTION_COL = { intro: '#555b66', groove: '#2fa860', build: '#e8c020', drop: '#e83a3a', breakdown: '#3a6ae8', outro: '#555b66' };
 
@@ -20,6 +20,15 @@ const M = {
   rubber: mat(0x151515, { roughness: 0.9, metalness: 0 }),
 };
 const glow = (c) => new THREE.MeshBasicMaterial({ color: c, toneMapped: false });
+// shared materials (fewer state changes / draw calls)
+const IND = glow(0xffffff);
+const RINGS = new Map();
+const ringMat = (c) => {
+  if (!RINGS.has(c)) RINGS.set(c, glow(c));
+  return RINGS.get(c);
+};
+const USB = glow(0x2266ff);
+const PADS = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
 
 function makeScreen(w, h, px = 512) {
   const c = document.createElement('canvas');
@@ -36,11 +45,11 @@ function knob(r = 0.011, h = 0.018, ring = null) {
   const k = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.85, r, h, 20), M.knob);
   k.position.y = h / 2;
   g.add(k);
-  const ind = new THREE.Mesh(new THREE.BoxGeometry(0.0018, 0.002, r * 0.8), glow(0xffffff));
+  const ind = new THREE.Mesh(new THREE.BoxGeometry(0.0018, 0.002, r * 0.8), IND);
   ind.position.set(0, h + 0.001, -r * 0.45);
   g.add(ind);
   if (ring) {
-    const rg = new THREE.Mesh(new THREE.TorusGeometry(r * 1.05, 0.0015, 6, 24), glow(ring));
+    const rg = new THREE.Mesh(new THREE.TorusGeometry(r * 1.05, 0.0015, 6, 24), ringMat(ring));
     rg.rotation.x = Math.PI / 2;
     rg.position.y = 0.002;
     g.add(rg);
@@ -85,6 +94,7 @@ function buildCDJ(index) {
   center.mesh.rotation.x = -Math.PI / 2;
   center.mesh.position.y = 0.0036;
   jog.add(center.mesh);
+  mergeStatic(jog, [center.mesh]); // 24 dots -> 1 mesh
   // play / cue
   const play = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 0.008, 24), glow(0x1d8f2f));
   play.position.set(-0.125, 0.104, -0.185);
@@ -101,14 +111,14 @@ function buildCDJ(index) {
   g.add(tcap);
   // hot cue pads
   const padCols = [0xff2a6d, 0xff9a1f, 0xffe11f, 0x2aff6a, 0x1fd2ff, 0x3a5cff, 0xa13aff, 0xff3ad2];
-  const pads = [];
+  const padGroup = new THREE.Group();
   for (let i = 0; i < 8; i++) {
-    const p = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.006, 0.014), glow(padCols[i]));
+    const p = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.006, 0.014), new THREE.MeshBasicMaterial({ color: new THREE.Color(padCols[i]).multiplyScalar(0.3) }));
     p.position.set(-0.098 + i * 0.028, 0.105, 0.095);
-    p.material.color.multiplyScalar(0.25);
-    g.add(p);
-    pads.push(p);
+    padGroup.add(p);
   }
+  const pads = bakeColored(padGroup, PADS); // 8 pads -> 1 mesh
+  g.add(pads);
   // misc buttons + browse knob
   for (let i = 0; i < 5; i++) {
     const b = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.005, 0.01), M.black);
@@ -119,7 +129,7 @@ function buildCDJ(index) {
   browse.position.set(0.13, 0.102, 0.06);
   g.add(browse);
   // USB slot
-  const usb = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.006, 0.004), glow(0x2266ff));
+  const usb = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.006, 0.004), USB);
   usb.position.set(0.11, 0.08, -0.226);
   g.add(usb);
   return { group: g, screen: scr, housing, center, jog, play, cue, pads, tcap, index, wfCache: null, wfTrack: null };
@@ -150,13 +160,20 @@ function buildMixer() {
     mk('low', 0.06);
     mk('filter', 0.005, 0x3a6aff);
     // VU meter (12 segments)
-    c.vu = [];
+    // 12 segments as one instanced mesh (lit segments recoloured each frame)
+    const vu = new THREE.InstancedMesh(new THREE.BoxGeometry(0.008, 0.003, 0.006), new THREE.MeshBasicMaterial({ toneMapped: false }), 12);
+    const m4 = new THREE.Matrix4();
+    vu.userData.on = [];
     for (let s = 0; s < 12; s++) {
-      const seg = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.003, 0.006), glow(s > 10 ? 0xff2020 : s > 8 ? 0xffa020 : 0x20ff60));
-      seg.position.set(x + 0.033, 0.103, 0.015 + s * 0.0145);
-      g.add(seg);
-      c.vu.push(seg);
+      m4.makeTranslation(x + 0.033, 0.103, 0.015 + s * 0.0145);
+      vu.setMatrixAt(s, m4);
+      vu.userData.on.push(new THREE.Color(s > 10 ? 0xff2020 : s > 8 ? 0xffa020 : 0x20ff60));
+      vu.setColorAt(s, new THREE.Color(0x050505));
     }
+    vu.userData.off = new THREE.Color(0x060606);
+    vu.userData.lit = -1;
+    g.add(vu);
+    c.vu = vu;
     const slot = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.002, 0.1), M.black);
     slot.position.set(x, 0.104, -0.12);
     g.add(slot);
@@ -277,8 +294,8 @@ export function buildBooth(scene) {
   booth.add(hp);
 
   const keep = [];
-  for (const d of decks) keep.push(d.housing, d.jog, d.play, d.cue, d.tcap, ...d.pads);
-  for (const c of mixer.ch) keep.push(c.trim, c.high, c.mid, c.low, c.filter, c.cap, ...c.vu);
+  for (const d of decks) keep.push(d.housing, d.jog, d.play, d.cue, d.tcap, d.pads);
+  for (const c of mixer.ch) keep.push(c.trim, c.high, c.mid, c.low, c.filter, c.cap, c.vu);
   keep.push(mixer.xcap, mixer.fxScr.mesh, mixer.fxKnob, mixer.fxOn, ...rmx.knobs, rmx.jogRing, rmx.jog, rmx.scr.mesh, strip, strip2);
   console.info('booth meshes merged', mergeStatic(booth, keep));
   return { group: booth, decks, mixer, rmx, topY, wfT: 0 };
@@ -497,7 +514,12 @@ export function updateBooth(booth, engine, dt, now, camPos) {
     c.trim.rotation.y = knobAngle(0.55);
     c.cap.position.z = -0.17 + deck.ui.fader * 0.095;
     const lv = Math.min(1, deck.level);
-    c.vu.forEach((s, k) => (s.visible = k / 12 < lv));
+    const lit = Math.round(lv * 12);
+    if (lit !== c.vu.userData.lit) {
+      c.vu.userData.lit = lit;
+      for (let k = 0; k < 12; k++) c.vu.setColorAt(k, k < lit ? c.vu.userData.on[k] : c.vu.userData.off);
+      c.vu.instanceColor.needsUpdate = true;
+    }
   });
   const r = booth.rmx;
   r.knobs[0].rotation.y = -engine.rmx.noise * 4;
