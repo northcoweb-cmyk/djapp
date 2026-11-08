@@ -5,32 +5,85 @@
 export const FPS = 200; // analysis frames per second (5 ms)
 const SR = 22050;
 
-const yieldUI = () => new Promise((r) => setTimeout(r, 0));
+// The heavy number crunching runs in a Web Worker (analysis.worker.js) so adding songs
+// mid-set never stutters the club; the main thread only renders the frequency bands
+// (OfflineAudioContext renders off-thread) and hands them over.
 export async function analyzeBuffer(buffer, onProgress = () => {}) {
   onProgress(0.05, 'Splitting frequency bands');
   const bands = await renderBands(buffer);
-  onProgress(0.35, 'Building waveform');
-  await yieldUI();
+  onProgress(0.4, 'Analysing in the background');
+  try {
+    const res = await runWorker(bands, buffer.duration);
+    onProgress(1, 'Done');
+    return res;
+  } catch (e) {
+    console.warn('analysis worker unavailable, analysing on the main thread', e);
+    return analyzeBands(bands, buffer.duration, onProgress);
+  }
+}
+
+let worker = null;
+let reqId = 0;
+const pending = new Map();
+function runWorker(bands, duration) {
+  if (typeof Worker === 'undefined') return Promise.reject(new Error('no workers'));
+  if (!worker) {
+    worker = new Worker(new URL('./analysis.worker.js', import.meta.url), { type: 'module' });
+    worker.onmessage = (e) => {
+      const { id, result, error } = e.data;
+      const p = pending.get(id);
+      pending.delete(id);
+      if (!p) return;
+      if (error) p.rej(new Error(error));
+      else p.res(result);
+    };
+    worker.onerror = (e) => {
+      for (const p of pending.values()) p.rej(e);
+      pending.clear();
+      worker = null;
+    };
+  }
+  const id = ++reqId;
+  // hand the band data over without copying when the browser allows it
+  let arrays = bands;
+  try {
+    arrays = bands.map((b) => (b.buffer.byteLength === b.byteLength ? b : b.slice()));
+  } catch (e) {}
+  return new Promise((res, rej) => {
+    pending.set(id, { res, rej });
+    try {
+      worker.postMessage({ id, bands: arrays, duration }, arrays.map((b) => b.buffer));
+    } catch (e) {
+      const copies = bands.map((b) => b.slice());
+      worker.postMessage({ id, bands: copies, duration }, copies.map((b) => b.buffer));
+    }
+  });
+}
+
+const yieldUI = () => new Promise((r) => setTimeout(r, 0));
+export async function analyzeBands(bands, duration, onProgress = () => {}, sync = false) {
+  const y = sync ? () => {} : yieldUI;
+  onProgress(0.45, 'Building waveform');
+  await y();
   const env = envelopes(bands);
-  onProgress(0.5, 'Detecting tempo');
-  await yieldUI();
+  onProgress(0.6, 'Detecting tempo');
+  await y();
   const onset = onsetCurve(env.low, env.full);
   const { bpm, phase } = detectTempo(onset);
-  onProgress(0.7, 'Finding downbeats');
-  await yieldUI();
-  const grid = buildGrid(bpm, phase, buffer.duration, env, onset);
-  onProgress(0.85, 'Mapping song structure');
-  await yieldUI();
-  const structure = mapStructure(grid, env, buffer.duration);
+  onProgress(0.75, 'Finding downbeats');
+  await y();
+  const grid = buildGrid(bpm, phase, duration, env, onset);
+  onProgress(0.88, 'Mapping song structure');
+  await y();
+  const structure = mapStructure(grid, env, duration);
   onProgress(1, 'Done');
   return {
-    duration: buffer.duration,
+    duration,
     bpm,
     fps: FPS,
-    // waveform envelopes (normalised 0..1) for CDJ displays + visuals
     wave: { low: env.lowN, mid: env.midN, high: env.highN, full: env.fullN },
     beats: grid.beats,
-    downbeatIndex: grid.downbeatIndex, // index into beats of first downbeat
+    downbeatIndex: grid.downbeatIndex,
     bars: structure.bars,
     sections: structure.sections,
     drops: structure.drops,
