@@ -381,7 +381,7 @@ export class AutoDJ {
     const c = this.current;
     if (!c || !c.deck.playing) return { playing: false, energy: 0, section: 'idle', hype: 0, started: this.started };
     const A = c.track.analysis;
-    const t = c.deck.position;
+    const t = c.deck.vpos;
     const bi = barAt(A, t);
     const bar = A.bars[Math.max(0, bi)];
     const sec = sectionAt(A, t);

@@ -104,7 +104,7 @@ export class DJView {
         const A = tr.analysis;
         const status = deck.playing ? (isCur ? 'PLAYING' : 'ON AIR') : isNext ? (summary ? `CUED · ${fmt(summary.startsIn)}` : 'CUED') : 'LOADED';
         const bpm = `${(A.bpm * deck.rate).toFixed(1)}`;
-        const rem = `-${fmt((A.duration - deck.position) / deck.rate)}`;
+        const rem = `-${fmt((A.duration - deck.vpos) / deck.rate)}`;
         if (compact) {
           g.font = '10px system-ui';
           g.fillStyle = deck.playing ? '#7dff9a' : isNext ? '#ffd84a' : '#6a6688';
@@ -132,7 +132,7 @@ export class DJView {
   lane(g, deck, tr, y, laneH, waveX, waveW, playX, sPPS, plan, summary) {
     const A = tr.analysis;
     const rate = deck.rate;
-    let pos = deck.position;
+    let pos = deck.vpos;
     const isNext = plan && plan.deck === deck && !deck.playing;
     let startT = 0;
     if (isNext && summary) {

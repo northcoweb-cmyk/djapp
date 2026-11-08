@@ -112,6 +112,11 @@ export class Deck {
     if (!this.playing) return this.cuePos;
     return this.offset0 + (this.eng.ctx.currentTime - this.startedAt) * this.rate;
   }
+  // smooth position for visuals (what is being heard right now, extrapolated per frame)
+  get vpos() {
+    if (!this.playing) return this.cuePos;
+    return this.offset0 + (Math.max(this.startedAt, this.eng.vnow) - this.startedAt) * this.rate;
+  }
   // convert a track time to the AudioContext time it will play at
   ctxTimeOf(trackTime) {
     return this.startedAt + (trackTime - this.offset0) / this.rate;
@@ -262,6 +267,7 @@ export class AudioEngine {
     this.timers = [];
     this.anims = [];
     this.bands = { low: 0, mid: 0, high: 0, rms: 0 };
+    this.vnow = 0;
   }
   resume() {
     return this.ctx.resume();
@@ -293,6 +299,22 @@ export class AudioEngine {
     this.schedule(t1, () => (this.rmx.noise = 0));
   }
   update() {
+    // smoothed visual clock: AudioContext time only advances per audio buffer (10-20 ms steps
+    // on many laptops), which makes beat-synced visuals judder. Extrapolate with
+    // performance.now() from the output timestamp and gently correct the drift.
+    const perf = performance.now();
+    let at = this.ctx.currentTime;
+    if (this.ctx.getOutputTimestamp) {
+      const ts = this.ctx.getOutputTimestamp();
+      if (ts && ts.contextTime > 0 && ts.performanceTime > 0) at = ts.contextTime + (perf - ts.performanceTime) / 1000;
+    }
+    if (this._vp === undefined) this.vnow = at;
+    else {
+      const pred = this.vnow + (perf - this._vp) / 1000;
+      const err = at - pred;
+      this.vnow = Math.abs(err) > 0.08 ? at : pred + err * 0.06;
+    }
+    this._vp = perf;
     const t = this.now;
     if (this.timers.length) {
       const due = this.timers.filter((x) => x.t <= t);

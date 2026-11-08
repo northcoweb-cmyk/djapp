@@ -661,7 +661,7 @@ export function updateRooms(R, club, dt, m, now) {
   club.heads.forEach((h, i) => {
     const gobo = R.gobos[i];
     if (!gobo) return;
-    if (!on) {
+    if (!on || gobo.userData.off) {
       gobo.visible = false;
       return;
     }

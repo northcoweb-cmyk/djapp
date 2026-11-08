@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { AudioEngine } from './audio/engine.js';
@@ -13,6 +12,7 @@ import { buildBooth, updateBooth, controlWorldPos } from './scene/booth.js';
 import { loadAssets, PeopleSim, ik } from './scene/people.js';
 import { Director } from './camera/director.js';
 import { Hud } from './ui/hud.js';
+import { CheapBloomPass } from './scene/bloom.js';
 
 const $ = (id) => document.getElementById(id);
 const BASE = import.meta.env.BASE_URL || '/';
@@ -24,7 +24,18 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.info.autoReset = false;
 const maxDpr = Math.min(window.devicePixelRatio || 1, 1.5);
-let dpr = Math.min(0.85, maxDpr);
+let dpr = Math.min(0.8, maxDpr);
+// graphics presets; 'auto' moves between them to hold 60 fps
+const QUALITY = {
+  high: { dpr: Math.min(1, maxDpr), bloom: true, haze: true, fullRate: 24, label: 'HIGH' },
+  medium: { dpr: Math.min(0.8, maxDpr), bloom: true, haze: true, fullRate: 18, label: 'MED' },
+  low: { dpr: Math.min(0.62, maxDpr), bloom: false, haze: false, fullRate: 10, label: 'LOW' },
+};
+const LEVELS = ['low', 'medium', 'high'];
+let qMode = 'auto';
+let qLevel = 'medium';
+let qGood = 0;
+let qCeiling = 'high';
 renderer.setPixelRatio(dpr);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x030208);
@@ -39,7 +50,7 @@ controls.enabled = false;
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.6, 0.5, 0.78);
+const bloom = new CheapBloomPass(0.75, 0.72);
 composer.addPass(bloom);
 const fisheye = new ShaderPass({
   uniforms: { tDiffuse: { value: null }, strength: { value: 0.55 } },
@@ -182,7 +193,6 @@ dj.on('track', (cur) => {
 
 // ---------------- entering the club ----------------
 let assetsReady = false;
-let quality = 'auto';
 loadAssets(BASE, (p) => ($('enter').textContent = `Loading people ${Math.round(p * 100)}%`))
   .then((assets) => {
     window.__assets = assets;
@@ -198,16 +208,13 @@ loadAssets(BASE, (p) => ($('enter').textContent = `Loading people ${Math.round(p
 
 $('enter').addEventListener('click', async () => {
   await engine.resume();
-  quality = $('quality').value;
-  if (quality === 'low') dpr = 0.7;
-  if (quality === 'high') dpr = maxDpr;
-  bloom.enabled = quality !== 'low';
-  renderer.setPixelRatio(dpr);
-  resize();
+  qMode = $('quality').value;
+  applyQuality(qMode === 'auto' ? 'medium' : qMode);
   if (assetsReady && !people) {
     people = new PeopleSim(scene, window.__assets, booth);
     people.populate(parseInt($('crowdSize').value, 10));
     people.onToast = toast;
+    people.fullRateDist = QUALITY[qLevel].fullRate;
     people.onStallDoor = (s, open) => {
       const d = club.rooms.stallDoors.get(s.z.toFixed(2));
       if (d) d.userData.target = open ? 1.4 : 0;
@@ -226,6 +233,30 @@ $('enter').addEventListener('click', async () => {
   hud.renderQueue();
   hud.hint(dj.canStart() ? 'Press Start set (or Space) when you are ready' : 'Add songs with + Add songs');
 });
+
+function applyQuality(level) {
+  qLevel = level;
+  const Q = QUALITY[level];
+  dpr = Q.dpr;
+  bloom.enabled = Q.bloom;
+  for (const s of club.smoke) s.visible = Q.haze;
+  // the heaviest see-through layers (lots of overdraw on weak GPUs)
+  for (const w of club.washes) w.visible = level !== 'low';
+  club.tiles.visible = level !== 'low';
+  for (const g of club.rooms.gobos) g.userData.off = level === 'low';
+  if (people) people.fullRateDist = Q.fullRate;
+  renderer.setPixelRatio(dpr);
+  resize();
+}
+function cycleQuality() {
+  const order = ['auto', 'high', 'medium', 'low'];
+  qMode = order[(order.indexOf(qMode) + 1) % order.length];
+  qGood = 0;
+  qCeiling = 'high';
+  applyQuality(qMode === 'auto' ? qLevel : qMode);
+  hud.hint(`Graphics: ${qMode === 'auto' ? 'Auto (' + QUALITY[qLevel].label + ')' : QUALITY[qMode].label}`);
+}
+hud.onQuality = cycleQuality;
 
 let toastTimer = null;
 function toast(first, second, delay) {
@@ -267,13 +298,24 @@ window.addEventListener('pointermove', (e) => {
 
 // ---------------- main loop ----------------
 const clock = new THREE.Clock();
-let fpsAcc = 0;
 let fpsN = 0;
 let lastBeat = -1;
 let lastBar = -1;
 let tcAcc = 0;
+let simMs = 0;
+let renderMs = 0;
+let hudMs = 0;
+let slowAcc = 0;
+let lastFrame = performance.now();
+let realAcc = 0;
+const frameTimes = [];
 function loop() {
   requestAnimationFrame(loop);
+  const f0 = performance.now();
+  const realDt = f0 - lastFrame;
+  lastFrame = f0;
+  realAcc += realDt;
+  if (realDt < 1000) frameTimes.push(realDt);
   const dt = Math.min(0.05, clock.getDelta());
   const t = clock.elapsedTime;
   engine.update();
@@ -287,8 +329,12 @@ function loop() {
   updateClub(club, t, dt, m, engine.bands, lightFX);
   updateBooth(booth, engine, dt, engine.now, camera.position);
   if (people) {
-    const ps = dj.plan && !dj.plan.scheduled ? dj.planSummary() : null;
-    people.cueUntil = ps && ps.startsIn < 20 ? engine.now + ps.startsIn : 0;
+    slowAcc += dt;
+    if (slowAcc > 0.25) {
+      slowAcc = 0;
+      const ps = dj.plan && !dj.plan.scheduled ? dj.planSummary() : null;
+      people.cueUntil = ps && ps.startsIn < 20 ? engine.now + ps.startsIn : 0;
+    }
     people.update(dt, m, engine.now, camera, engine, input);
     const p = people.selected;
     if (p && marker.visible) marker.position.set(p.pos.x, p.root.position.y + 0.03, p.pos.z);
@@ -310,30 +356,43 @@ function loop() {
     }
   }
   director.update(dt, t, m);
-  // adaptive quality ladder (before rendering, so a resize never shows a blank frame)
-  fpsAcc += dt;
+  // adaptive quality (before rendering, so a resize never shows a blank frame)
   fpsN++;
-  if (fpsAcc > 2) {
-    const fps = fpsN / fpsAcc;
-    $('fps').textContent = `${Math.round(fps)} fps · ${Math.round(dpr * 100)}% res${bloom.enabled ? '' : ' · no bloom'} · ${renderer.info.render.calls} draws`;
-    if (quality === 'auto') {
-      if (fps < 50) {
-        if (dpr > 0.75) dpr = Math.max(0.75, dpr - 0.15);
-        else if (bloom.enabled) bloom.enabled = false;
-        else if (dpr > 0.55) dpr = Math.max(0.55, dpr - 0.1);
-      } else if (fps > 58 && bloom.enabled && dpr < Math.min(1, maxDpr)) dpr = Math.min(1, dpr + 0.05);
-      if (Math.abs(renderer.getPixelRatio() - dpr) > 0.01) {
-        renderer.setPixelRatio(dpr);
-        resize();
-      }
+  if (realAcc > 3000) {
+    const fps = (fpsN * 1000) / realAcc;
+    const n = Math.max(1, fpsN);
+    const sorted = frameTimes.slice().sort((a, b) => a - b);
+    const p95 = sorted.length ? sorted[Math.floor(sorted.length * 0.95)] : 0;
+    frameTimes.length = 0;
+    $('fps').textContent = `${Math.round(fps)} fps · worst 5%: ${p95.toFixed(0)} ms · sim ${(simMs / n).toFixed(1)} · render ${(renderMs / n).toFixed(1)} · ui ${(hudMs / n).toFixed(1)} ms · ${renderer.info.render.calls} draws · ${QUALITY[qLevel].label}${qMode === 'auto' ? ' auto' : ''} · G to change`;
+    if (qMode === 'auto' && people) {
+      const i = LEVELS.indexOf(qLevel);
+      if ((fps < 50 || p95 > 28) && i > 0) {
+        // step down; don't climb back above this level for a while
+        qCeiling = LEVELS[i - 1];
+        applyQuality(LEVELS[i - 1]);
+        qGood = 0;
+      } else if (fps > 58.5 && i < LEVELS.indexOf(qCeiling)) {
+        if (++qGood >= 3) {
+          applyQuality(LEVELS[i + 1]);
+          qGood = 0;
+        }
+      } else qGood = 0;
     }
-    fpsAcc = 0;
+    realAcc = 0;
     fpsN = 0;
+    simMs = renderMs = hudMs = 0;
   }
   film.uniforms.time.value = t;
+  const f1 = performance.now();
   renderer.info.reset();
   composer.render(dt);
+  const f2 = performance.now();
   hud.update(dt, m, people);
+  const f3 = performance.now();
+  simMs += f1 - f0;
+  renderMs += f2 - f1;
+  hudMs += f3 - f2;
   tcAcc += dt;
   if (film.enabled && tcAcc > 0.04) {
     tcAcc = 0;

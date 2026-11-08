@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { collides, zoneAt, floorY, PRIVATE, POI, DANCE, findPath, levelAfterMove, FEATURES, STAGE } from './nav.js';
+import { collides, zoneAt, floorY, PRIVATE, POI, DANCE, findPath, levelAfterMove, FEATURES, STAGE, canWalk } from './nav.js';
 import { prepCharacter, atlasCharacter, makeTintMaterial, bakeColored } from './merge.js';
 
 const _frustum = new THREE.Frustum();
@@ -12,6 +12,12 @@ const _proj = new THREE.Matrix4();
 const _sphere = new THREE.Sphere();
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
+// reusable neighbour buffers (no per-frame allocations -> no GC hitches)
+const NB = new Array(96);
+const NX = new Float32Array(96);
+const NZ = new Float32Array(96);
+const ND = new Float32Array(96);
+const FINGERS = /Hand(Thumb|Index|Middle|Ring|Pinky)/;
 
 const FEMALE = ['f02', 'f22', 'f37', 'twerk'];
 const MALE = ['m42', 'owner', 'dj', 'bartender'];
@@ -100,6 +106,10 @@ export async function loadAssets(base, onProgress = () => {}) {
       const clip = THREE.AnimationClip.parse(j);
       clip.name = id;
       clip.userData = { speed: c.speed || 0, beat: DANCE_CLIPS.has(id) ? clipBeat(clip) : 0 };
+      const lite = clip.clone();
+      lite.tracks = lite.tracks.filter((t) => !FINGERS.test(t.name));
+      lite.name = id;
+      clip.userData.lite = lite;
       clips[id] = clip;
       tick();
     })
@@ -193,6 +203,8 @@ export class Person {
     this.name = o.name || pick(this.female ? NAMES_F : NAMES_M);
     const tpl = sim.assets.chars[type];
     this.unit = tpl.unit;
+    this.lite = !!o.lo;
+    this.vel = { x: 0, z: 0 };
     this.obj = SkeletonUtils.clone(o.lo && tpl.lo ? tpl.lo : tpl.scene);
     this.root = new THREE.Group();
     this.root.add(this.obj);
@@ -244,8 +256,8 @@ export class Person {
       social: rand(0, 1),
       tempo: rand(0.97, 1.03),
       phase: rand(0, Math.PI * 2),
-      amp: rand(0.7, 1.3),
-      sway: rand(0.02, 0.09),
+      amp: rand(0.75, 1.15),
+      sway: rand(0.008, 0.035),
     };
     this.b = { groove: 0.3, anticipation: 0, euphoria: 0, chills: 0, fatigue: rand(0, 0.15), hype: 0.2, thirst: rand(0, 0.7), bladder: rand(0, 0.6) };
     this.state = 'dance';
@@ -333,7 +345,7 @@ export class Person {
   }
   play(name, fade = 0.4, ts = 1) {
     if (!this.sim.assets.clips[name]) name = 'idle';
-    const clip = this.sim.clipFor(this.type, name);
+    const clip = this.sim.clipFor(this.type, name, this.lite);
     let a = this.actions[name];
     if (!a) a = this.actions[name] = this.mixer.clipAction(clip);
     a.timeScale = ts;
@@ -353,7 +365,8 @@ export class Person {
   walkTS(speed) {
     const c = this.sim.assets.clips[this.walkClip()] || this.sim.assets.clips.walk;
     const cs = (c && c.userData.speed) || 1.03;
-    return Math.max(0.5, Math.min(2.2, speed / (cs * (this.height / 1.76))));
+    // natural stride: never slow-motion legs (people stop instead), never cartoon-fast
+    return Math.max(0.8, Math.min(2.2, speed / (cs * (this.height / 1.76))));
   }
   place() {
     this.root.position.set(this.pos.x, floorY(this.pos.x, this.pos.z, this.level) + this.yOff, this.pos.z);
@@ -366,8 +379,10 @@ export class Person {
   }
   goTo(x, z, level, speed, then) {
     this.path = findPath(this.pos.x, this.pos.z, this.level, x, z, level ?? this.level);
-    this.walkSpeed = speed || rand(0.95, 1.2);
+    this.walkSpeed = speed || rand(1.0, 1.25);
     this.state = 'walk';
+    this.stuck = 0;
+    this.passT = 0;
     this.then = then;
     this.play(this.walkClip(), 0.35, this.walkTS(this.walkSpeed));
   }
@@ -393,14 +408,17 @@ export class PeopleSim {
     this.frame = 0;
     this.cleared = {};
     this.onStallDoor = null;
+    this.fullRateDist = 18; // everyone visible within this distance animates every frame
   }
-  clipFor(type, name) {
+  clipFor(type, name, lite) {
+    const base = this.assets.clips[name];
+    const src = lite && base.userData.lite ? base.userData.lite : base;
     const unit = this.assets.chars[type].unit;
-    if (Math.abs(unit - 1) < 0.03) return this.assets.clips[name];
-    const key = type + ':' + name;
+    if (Math.abs(unit - 1) < 0.03) return src;
+    const key = type + ':' + name + (lite ? ':l' : '');
     if (!this.clipCache[key]) {
-      const c = this.assets.clips[name].clone();
-      c.userData = { ...this.assets.clips[name].userData };
+      const c = src.clone();
+      c.userData = { ...base.userData };
       for (const t of c.tracks) if (/\.position$/.test(t.name)) for (let i = 0; i < t.values.length; i++) t.values[i] *= unit;
       this.clipCache[key] = c;
     }
@@ -642,7 +660,7 @@ export class PeopleSim {
       }
     // spatial hash
     const G = this.grid;
-    G.clear();
+    for (const arr of G.values()) arr.length = 0;
     for (const p of this.people) {
       if (p.state === 'sit' || p.hidden) continue;
       const k = Math.floor(p.pos.x) * 1000 + Math.floor(p.pos.z) + p.level * 1e7;
@@ -656,7 +674,7 @@ export class PeopleSim {
       _sphere.center.y += 1;
       _sphere.radius = 1.3;
       const vis = !p.hidden && _frustum.intersectsSphere(_sphere);
-      const rate = p.role === 'dj' || p.role === 'player' || p.forceAnim ? 1 : !vis ? 8 : dist < 8 ? 1 : dist < 15 ? 2 : 3;
+      const rate = p.role === 'dj' || p.role === 'player' || p.forceAnim ? 1 : !vis ? 6 : dist < this.fullRateDist ? 1 : 2;
       p.acc += dt;
       p.vis = vis;
       if (p.role === 'crowd') this.updateCrowd(p, dt, m, sec, now);
@@ -692,7 +710,7 @@ export class PeopleSim {
     let secK = sec === 'drop' ? 1 : sec === 'groove' ? 0.8 : sec === 'build' ? Math.max(0.25, 1 - b.anticipation * 0.7) : sec === 'breakdown' ? 0.3 : 0.5;
     if (p.role === 'dj') secK *= 0.55;
     if (p.role === 'guard' || p.role === 'staff') secK *= 0.12;
-    const A = (1.2 + 3.2 * b.groove + 2.2 * b.hype) * p.p.amp * secK * (p.state === 'rail' ? 0.6 : 1);
+    const A = (0.9 + 2.3 * b.groove + 1.5 * b.hype) * p.p.amp * secK * (p.state === 'rail' ? 0.6 : 1);
     const hips = p.bones.Hips;
     if (hips) {
       hips.position.y -= A * u * (0.5 + 0.5 * Math.cos(2 * Math.PI * (frac - 0.1)));
@@ -749,7 +767,7 @@ export class PeopleSim {
       if (p.state === 'dance' || p.state === 'rail') {
         if (impact > 0.45 && Math.random() < st.hop) {
           p.hopUntil = now + m.barSec * (1.5 + 2.5 * impact * P.energy);
-          p.hopH = 0.1 + 0.16 * P.energy;
+          p.hopH = 0.07 + 0.12 * P.energy;
           p.react = p.hopUntil - now;
           p.play(pick(st.drop), 0.12, 1);
         } else if (impact > 0.25) {
@@ -836,13 +854,17 @@ export class PeopleSim {
       if (!quiet) p.facing = null;
     } else if (p.curName !== 'idle' && p.curName !== 'talk') p.play(Math.random() < 0.4 ? 'talk' : 'idle', 0.8);
     // stay near the home slot; step aside for people walking through
-    p.yieldV.multiplyScalar(Math.max(0, 1 - dt * 1.5));
-    const hx = p.home.x + p.yieldV.x;
-    const hz = p.home.z + p.yieldV.y;
-    p.pos.x += (hx - p.pos.x) * Math.min(1, dt * 1.5);
-    p.pos.z += (hz - p.pos.z) * Math.min(1, dt * 1.5);
-    const face = p.facing ?? Math.PI + Math.sin(now * 0.3 + P.phase) * 0.22;
-    p.yaw += wrapPi(face - p.yaw) * Math.min(1, dt * 2);
+    p.yieldV.multiplyScalar(Math.max(0, 1 - dt * 0.9));
+    const ex = p.home.x + p.yieldV.x - p.pos.x;
+    const ez = p.home.z + p.yieldV.y - p.pos.z;
+    if (Math.abs(ex) + Math.abs(ez) > 0.06) {
+      // drift back calmly (no constant sliding on the spot)
+      const k = Math.min(1, dt * 1.1);
+      p.pos.x += ex * k;
+      p.pos.z += ez * k;
+    }
+    const face = p.facing ?? Math.PI + Math.sin(now * 0.13 + P.phase) * 0.16;
+    p.yaw += wrapPi(face - p.yaw) * Math.min(1, dt * 1.2);
     // needs: drinks, restroom, a seat
     const calm = sec !== 'drop' && sec !== 'build' && p.react <= 0;
     if (!calm) return;
@@ -991,139 +1013,230 @@ export class PeopleSim {
     this.backToDance(p);
   }
 
-  // follow the current path with local avoidance; returns true on arrival
+  // follow the current path like a person would: straightened route, smooth acceleration and
+  // turning, pass people on one side (and stick to it), pause briefly if someone is right in
+  // front instead of shuffling in slow motion. Returns true on arrival.
   walkStep(p, dt) {
     if (!p.path || !p.path.length) return true;
+    p.pullT = (p.pullT || 0) - dt;
+    if (p.pullT <= 0 && p.path.length > 1) {
+      p.pullT = 0.35;
+      const n1 = p.path[1];
+      if (canWalk(p.pos.x, p.pos.z, n1.x, n1.z, p.level)) p.path.shift();
+    }
     const tgt = p.path[0];
     const dx = tgt.x - p.pos.x;
     const dz = tgt.z - p.pos.z;
     const d = Math.hypot(dx, dz);
-    if (d < (p.path.length > 1 ? 0.45 : 0.18)) {
+    const last = p.path.length === 1;
+    if (d < (last ? 0.2 : 0.55)) {
       p.path.shift();
       if (!p.path.length) {
-        if (p.curName === p.walkClip()) p.play('idle', 0.35);
+        this.stopWalk(p);
         return true;
       }
       return false;
     }
-    let ux = dx / d;
-    let uz = dz / d;
-    // look ahead for people: steer around them, slow down if blocked
-    let slow = 1;
-    let sx = 0;
-    let sz = 0;
-    this.neighbours(p, 1.3, (o, ox, oz, od) => {
+    const ux = dx / d;
+    const uz = dz / d;
+    // people ahead: choose a side to pass and keep it for a moment (no zig-zag)
+    let lateral = 0;
+    let block = 0;
+    const n = this.gather(p, 1.5);
+    let any = false;
+    for (let i = 0; i < n; i++) {
+      const o = NB[i];
+      const ox = NX[i];
+      const oz = NZ[i];
+      const od = ND[i];
       const ahead = ox * ux + oz * uz;
-      if (ahead <= 0) return;
+      if (ahead <= 0.05) continue;
       const lat = ox * -uz + oz * ux;
-      if (Math.abs(lat) < 0.55) {
-        const push = (1.3 - od) / 1.3;
-        const side = lat >= 0 ? -1 : 1;
-        sx += -uz * side * push * 1.4;
-        sz += ux * side * push * 1.4;
-        if (od < 0.5) slow = Math.min(slow, o.state === 'dance' ? 0.55 : 0.3);
-        if (o.state === 'dance' && od < 1.0) {
-          // ask the dancer to step aside
-          o.yieldV.x += uz * -side * dt * 2.6;
-          o.yieldV.y += -ux * -side * dt * 2.6;
-          o.yieldV.clampLength(0, 0.8);
-        }
+      if (Math.abs(lat) > 0.65) continue;
+      const close = 1 - od / 1.5;
+      if (!any && (p.passT || 0) <= 0) p.passSide = lat >= 0 ? -1 : 1;
+      any = true;
+      lateral += p.passSide * close * (o.state === 'dance' || o.state === 'rail' ? 0.45 : 0.8);
+      if (od < 0.62 && Math.abs(lat) < 0.38 && o.state !== 'dance' && o.state !== 'rail') block = Math.max(block, close);
+      if ((o.state === 'dance' || o.state === 'rail') && od < 1.1) {
+        // the dancer steps aside, away from our path
+        o.yieldV.x += -uz * -p.passSide * dt * 1.6;
+        o.yieldV.y += ux * -p.passSide * dt * 1.6;
+        o.yieldV.clampLength(0, 0.6);
       }
-    });
-    ux += sx;
-    uz += sz;
-    const l = Math.hypot(ux, uz) || 1;
-    ux /= l;
-    uz /= l;
-    const sp = p.walkSpeed * slow;
-    let moved = false;
-    const isCrowd = p.role === 'crowd';
-    for (const off of [0, 0.45, -0.45, 0.9, -0.9, 1.4, -1.4]) {
-      const c = Math.cos(off);
-      const s = Math.sin(off);
-      const vx = ux * c - uz * s;
-      const vz = ux * s + uz * c;
-      const nx = p.pos.x + vx * sp * dt;
-      const nz = p.pos.z + vz * sp * dt;
-      if (collides(nx, nz, 0.2, p.level)) continue;
-      if (isCrowd && PRIVATE[zoneAt(nx, nz, p.level)]) continue;
-      p.pos.x = nx;
-      p.pos.z = nz;
-      p.level = levelAfterMove(nx, nz, p.level);
-      p.yaw += wrapPi(Math.atan2(vx, vz) - p.yaw) * Math.min(1, dt * 7);
-      moved = true;
-      break;
     }
-    if (!moved && p.path.length === 1 && d < 1.2) {
+    p.passT = any ? 0.9 : Math.max(0, (p.passT || 0) - dt);
+    lateral = Math.max(-0.9, Math.min(0.9, lateral));
+    // ease the side-step in and out (people drift aside, they don't twitch)
+    p.lat = (p.lat || 0) + (lateral - (p.lat || 0)) * Math.min(1, dt * 2.5);
+    lateral = Math.abs(p.lat) < 0.04 ? 0 : p.lat;
+    let wx = ux + -uz * lateral;
+    let wz = uz + ux * lateral;
+    const wl = Math.hypot(wx, wz) || 1;
+    wx /= wl;
+    wz /= wl;
+    // speed: a natural pace, slowing only for the final steps; stop briefly if blocked
+    let target = p.walkSpeed;
+    if (block > 0.5) target = 0;
+    else if (block > 0) target *= 1 - block * 0.3;
+    if (last && d < 1.0) target = Math.min(target, Math.max(0.5, d * 1.2));
+    const v = p.vel;
+    let tvx = wx * target;
+    let tvz = wz * target;
+    const sp0 = Math.hypot(v.x, v.z);
+    if (sp0 > 0.2 && target > 0) {
+      // limited turn rate: people curve, they don't snap
+      const a0 = Math.atan2(v.x, v.z);
+      let da = wrapPi(Math.atan2(tvx, tvz) - a0);
+      const maxTurn = 1.7 * dt;
+      if (Math.abs(da) > maxTurn) da = Math.sign(da) * maxTurn;
+      tvx = Math.sin(a0 + da) * target;
+      tvz = Math.cos(a0 + da) * target;
+    }
+    let ax = tvx - v.x;
+    let az = tvz - v.z;
+    const al = Math.hypot(ax, az);
+    const amax = (target === 0 ? 3.5 : 2.0) * dt;
+    if (al > amax) {
+      ax *= amax / al;
+      az *= amax / al;
+    }
+    v.x += ax;
+    v.z += az;
+    let sp = Math.hypot(v.x, v.z);
+    let moved = false;
+    if (sp > 1e-3) {
+      const nx = p.pos.x + v.x * dt;
+      const nz = p.pos.z + v.z * dt;
+      if (this.free(p, nx, nz)) {
+        p.pos.x = nx;
+        p.pos.z = nz;
+        moved = true;
+      } else if (this.free(p, nx, p.pos.z)) {
+        p.pos.x = nx;
+        v.z *= 0.6;
+        moved = true;
+      } else if (this.free(p, p.pos.x, nz)) {
+        p.pos.z = nz;
+        v.x *= 0.6;
+        moved = true;
+      } else {
+        if (!p.turnSide) p.turnSide = Math.random() < 0.5 ? 1 : -1;
+        const a = Math.atan2(v.x, v.z) + p.turnSide * 0.5;
+        v.x = Math.sin(a) * sp * 0.5;
+        v.z = Math.cos(a) * sp * 0.5;
+      }
+      if (moved) p.level = levelAfterMove(p.pos.x, p.pos.z, p.level);
+    }
+    sp = Math.hypot(v.x, v.z);
+    if (sp > 0.15) p.yaw += wrapPi(Math.atan2(v.x, v.z) - p.yaw) * Math.min(1, dt * 3.2);
+    const wc = p.walkClip();
+    if (sp < 0.15) {
+      if (p.curName === wc) p.play('idle', 0.35);
+    } else if (p.curName !== wc) p.play(wc, 0.3, p.walkTS(sp));
+    else if (p.cur) p.cur.timeScale += (p.walkTS(sp) - p.cur.timeScale) * Math.min(1, dt * 3);
+    if (!moved && last && d < 1.2) {
       // the exact spot is inside furniture (seat, counter): close enough
       p.path.length = 0;
-      if (p.curName === p.walkClip()) p.play('idle', 0.35);
+      this.stopWalk(p);
       return true;
     }
-    if (!moved) {
+    if (!moved || sp < 0.05) {
       p.stuck = (p.stuck || 0) + dt;
-      if (p.stuck > 3) {
-        // re-plan from here
-        const last = p.path[p.path.length - 1];
-        p.path = findPath(p.pos.x, p.pos.z, p.level, last.x, last.z, p.level);
+      if (p.stuck > (block > 0.5 ? 6 : 3)) {
+        const end = p.path[p.path.length - 1];
+        p.path = findPath(p.pos.x, p.pos.z, p.level, end.x, end.z, p.level);
         p.stuck = 0;
+        p.turnSide = 0;
       }
     } else p.stuck = 0;
-    if (p.cur && p.curName === p.walkClip()) p.cur.timeScale = p.walkTS(sp);
     return false;
   }
+  free(p, x, z) {
+    if (collides(x, z, 0.2, p.level)) return false;
+    if (p.role === 'crowd' && PRIVATE[zoneAt(x, z, p.level)]) return false;
+    return true;
+  }
+  stopWalk(p) {
+    p.vel.x = 0;
+    p.vel.z = 0;
+    if (p.curName === p.walkClip()) p.play('idle', 0.35);
+  }
 
-  neighbours(p, r, fn) {
+  // neighbours within r (fills the shared buffers, returns the count)
+  gather(p, r) {
     const cx = Math.floor(p.pos.x);
     const cz = Math.floor(p.pos.z);
+    let n = 0;
     for (let ix = cx - 1; ix <= cx + 1; ix++)
       for (let iz = cz - 1; iz <= cz + 1; iz++) {
         const c = this.grid.get(ix * 1000 + iz + p.level * 1e7);
         if (!c) continue;
-        for (const o of c) {
+        for (let j = 0; j < c.length && n < 96; j++) {
+          const o = c[j];
           if (o === p) continue;
           const ox = o.pos.x - p.pos.x;
           const oz = o.pos.z - p.pos.z;
           const od = Math.hypot(ox, oz);
-          if (od < r) fn(o, ox, oz, od);
+          if (od >= r) continue;
+          NB[n] = o;
+          NX[n] = ox;
+          NZ[n] = oz;
+          ND[n] = od;
+          n++;
         }
       }
+    return n;
   }
 
-  // nobody overlaps: positional separation with priorities (walkers > dancers, staff fixed)
+  // nobody overlaps. Walkers keep their line (dancers make room); fixed roles never move.
+  sepWeight(q, other) {
+    if (q.role === 'guard' || q.role === 'staff' || q.role === 'dj' || q.role === 'player' || q.role === 'dancer') return 0;
+    if (q.state === 'walk') return other.state === 'walk' ? 0.5 : other.state === 'dance' || other.state === 'rail' ? 0 : 1;
+    return 1;
+  }
   separate() {
-    const MIN = 0.5;
-    const weight = (q) => (q.role === 'guard' || q.role === 'staff' || q.role === 'dj' || q.role === 'player' || q.role === 'dancer' ? 0 : q.state === 'walk' ? 0.25 : 1);
     for (const p of this.people) {
       if (p.state === 'sit' || p.hidden) continue;
-      this.neighbours(p, MIN, (o, ox, oz, od) => {
-        if (o.id < p.id || o.state === 'sit' || o.hidden) return;
+      const n = this.gather(p, 0.5);
+      for (let i = 0; i < n; i++) {
+        const o = NB[i];
+        if (o.id < p.id || o.state === 'sit' || o.hidden) continue;
+        let od = ND[i];
+        let ox = NX[i];
+        let oz = NZ[i];
+        const MIN = p.state === 'walk' || o.state === 'walk' ? 0.5 : 0.44;
+        if (od >= MIN) continue;
         if (od < 1e-4) {
           ox = 0.01;
           oz = 0;
           od = 0.01;
         }
-        const wp = weight(p);
-        const wo = weight(o);
-        if (wp + wo === 0) return;
-        const corr = MIN - od;
+        const wp = this.sepWeight(p, o);
+        const wo = this.sepWeight(o, p);
+        if (wp + wo === 0) continue;
+        const corr = (MIN - od) * 0.6; // soft: resolves over a few frames, no jitter
         const nx = ox / od;
         const nz = oz / od;
         const kp = wp / (wp + wo);
         const ko = wo / (wp + wo);
-        const px = p.pos.x - nx * corr * kp;
-        const pz = p.pos.z - nz * corr * kp;
-        if (kp > 0 && !collides(px, pz, 0.18, p.level)) {
-          p.pos.x = px;
-          p.pos.z = pz;
+        if (kp > 0) {
+          const px = p.pos.x - nx * corr * kp;
+          const pz = p.pos.z - nz * corr * kp;
+          if (!collides(px, pz, 0.18, p.level)) {
+            p.pos.x = px;
+            p.pos.z = pz;
+          }
         }
-        const qx = o.pos.x + nx * corr * ko;
-        const qz = o.pos.z + nz * corr * ko;
-        if (ko > 0 && !collides(qx, qz, 0.18, o.level)) {
-          o.pos.x = qx;
-          o.pos.z = qz;
+        if (ko > 0) {
+          const qx = o.pos.x + nx * corr * ko;
+          const qz = o.pos.z + nz * corr * ko;
+          if (!collides(qx, qz, 0.18, o.level)) {
+            o.pos.x = qx;
+            o.pos.z = qz;
+          }
         }
-      });
+      }
     }
   }
 

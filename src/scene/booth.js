@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { STAGE } from './club.js';
 import { mergeStatic, bakeColored } from './merge.js';
+import { cheapenMaterials } from './bloom.js';
 
 const SECTION_COL = { intro: '#555b66', groove: '#2fa860', build: '#e8c020', drop: '#e83a3a', breakdown: '#3a6ae8', outro: '#555b66' };
 
@@ -297,6 +298,7 @@ export function buildBooth(scene) {
   for (const d of decks) keep.push(d.housing, d.jog, d.play, d.cue, d.tcap, d.pads);
   for (const c of mixer.ch) keep.push(c.trim, c.high, c.mid, c.low, c.filter, c.cap, c.vu);
   keep.push(mixer.xcap, mixer.fxScr.mesh, mixer.fxKnob, mixer.fxOn, ...rmx.knobs, rmx.jogRing, rmx.jog, rmx.scr.mesh, strip, strip2);
+  cheapenMaterials(booth);
   console.info('booth meshes merged', mergeStatic(booth, keep));
   return { group: booth, decks, mixer, rmx, topY, wfT: 0 };
 }
@@ -373,7 +375,7 @@ function drawCDJScreen(d, deck, now) {
   }
   d.emptyDrawn = false;
   const A = tr.analysis;
-  const pos = deck.position;
+  const pos = deck.vpos;
   g.fillStyle = '#fff';
   g.font = 'bold 15px Arial';
   g.fillText(tr.name.slice(0, 34), 80, 20);
@@ -472,7 +474,7 @@ function drawJogCenter(d, deck) {
   g.arc(W / 2, W / 2, W / 2, 0, Math.PI * 2);
   g.fill();
   const playing = deck.playing;
-  const frac = deck.track && deck.track.analysis ? deck.position / deck.track.analysis.duration : 0;
+  const frac = deck.track && deck.track.analysis ? deck.vpos / deck.track.analysis.duration : 0;
   g.lineWidth = 10;
   g.strokeStyle = playing ? '#ff2a4a' : '#552030';
   g.beginPath();
@@ -496,7 +498,9 @@ export function updateBooth(booth, engine, dt, now, camPos) {
   booth.decks.forEach((d, i) => {
     const deck = engine.decks[i];
     if (deck.playing) d.jog.rotation.y -= dt * deck.rate * ((33.33 / 60) * Math.PI * 2);
-    if (redraw) {
+    const sig = (deck.track ? deck.track.id : 0) + ':' + deck.cuePos.toFixed(2);
+    if (redraw && (deck.playing || d.sig !== sig)) {
+      d.sig = sig;
       drawCDJScreen(d, deck, now);
       drawJogCenter(d, deck);
     }

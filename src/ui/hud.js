@@ -19,6 +19,7 @@ export class Hud {
     this.acc = 0;
     this.lastDrops = '';
     this.hype = new Map();
+    this.els = {};
     this.buildCamBar();
     this.bind();
     this.renderQueue();
@@ -133,6 +134,9 @@ export class Hud {
       case 'n':
         this.dj.mixNow();
         break;
+      case 'g':
+        this.onQuality && this.onQuality();
+        break;
       case 'q':
         document.body.classList.toggle('hide-set');
         break;
@@ -215,8 +219,27 @@ export class Hud {
       hype: src.hype,
     };
   }
+  setText(id, text) {
+    const el = this.els[id] || (this.els[id] = $(id));
+    if (el.__t !== text) {
+      el.__t = text;
+      el.textContent = text;
+    }
+  }
+  setHTML(id, html) {
+    const el = this.els[id] || (this.els[id] = $(id));
+    if (el.__h !== html) {
+      el.__h = html;
+      el.innerHTML = html;
+    }
+  }
   update(dt, m, people) {
-    const v = this.brainValues(m, people);
+    this.vAcc = (this.vAcc || 0) + dt;
+    if (!this.v || this.vAcc > 0.1) {
+      this.vAcc = 0;
+      this.v = this.brainValues(m, people);
+    }
+    const v = this.v;
     this.brain.draw(dt, v, m.playing ? m.beatFrac : 0);
     if (!document.body.classList.contains('hide-dj')) this.djv.draw(dt, m);
     this.acc += dt;
@@ -224,17 +247,17 @@ export class Hud {
     this.acc = 0;
     const dj = this.dj;
     // top bar
-    $('setClock').textContent = fmt(m.setTime || 0);
+    this.setText('setClock', fmt(m.setTime || 0));
     document.querySelector('.live').classList.toggle('on', dj.started);
     $('hypeBar').style.width = `${Math.round(v.hype * 100)}%`;
     if (m.playing) {
-      $('deckTag').textContent = `DECK ${m.deck + 1}`;
-      $('trackName').textContent = m.track.name;
+      this.setText('deckTag', `DECK ${m.deck + 1}`);
+      this.setText('trackName', m.track.name);
       const s = $('sectionTag');
       s.textContent = m.section.toUpperCase() + (m.transition ? ' · MIXING' : '');
       s.style.background = SECTION_COL[m.section] || '#333';
-      $('dropIn').textContent = m.nextDrop && m.barsToDrop <= 16 ? `DROP IN ${m.barsToDrop} BAR${m.barsToDrop === 1 ? '' : 'S'}` : '';
-      $('bpm').textContent = `${m.bpm.toFixed(1)} BPM`;
+      this.setText('dropIn', m.nextDrop && m.barsToDrop <= 16 ? `DROP IN ${m.barsToDrop} BAR${m.barsToDrop === 1 ? '' : 'S'}` : '');
+      this.setText('bpm', `${m.bpm.toFixed(1)} BPM`);
       let h = this.hype.get(m.track.id);
       if (!h) this.hype.set(m.track.id, (h = []));
       h.push([m.t, v.hype]);
@@ -248,7 +271,7 @@ export class Hud {
     }
     // now playing card
     if (m.playing) {
-      $('nowName').textContent = m.track.name;
+      this.setText('nowName', m.track.name);
       $('nowMeta').textContent = `Deck ${m.deck + 1} · ${fmt(m.t)} / ${fmt(m.track.analysis.duration)} · ${fmt(m.remaining)} left · ${m.nextDrop ? 'next drop in ' + m.barsToDrop + ' bars' : 'no more drops'}`;
     } else {
       $('nowName').textContent = dj.started ? 'Loading…' : 'Nothing yet';
@@ -260,12 +283,14 @@ export class Hud {
     $('mixNow').disabled = !dj.current || !!(dj.plan && dj.plan.scheduled);
     if (ps) {
       $('nextName').textContent = `${ps.track.name}`;
-      $('nextSteps').innerHTML =
+      this.setHTML(
+        'nextSteps',
         `<li><span>${esc(ps.type)}</span><span>${ps.startsIn > 0 ? 'in ' + fmt(ps.startsIn) : 'mixing'}</span></li>` +
-        ps.steps.map((s) => `<li class="${s.at < 0 ? 'done' : s.at < 8 ? 'soon' : ''}"><span>${esc(s.label)}</span><span>${s.at < 0 ? '✓' : fmt(s.at)}</span></li>`).join('');
+          ps.steps.map((s) => `<li class="${s.at < 0 ? 'done' : s.at < 8 ? 'soon' : ''}"><span>${esc(s.label)}</span><span>${s.at < 0 ? '✓' : fmt(s.at)}</span></li>`).join('')
+      );
     } else {
-      $('nextName').textContent = dj.upNext.length ? (dj.started ? 'Planning…' : dj.upNext[0].name) : 'Queue empty';
-      $('nextSteps').innerHTML = '';
+      this.setText('nextName', dj.upNext.length ? (dj.started ? 'Planning…' : dj.upNext[0].name) : 'Queue empty');
+      this.setHTML('nextSteps', '');
     }
     // brain panel
     const sel = people && people.selected;
@@ -278,10 +303,10 @@ export class Hud {
     else if (m.section === 'breakdown') state = 'Breathing · chills and chatter';
     else if (m.section === 'drop' || m.section === 'groove') state = v.motor > 0.5 ? 'Locked into the groove' : 'Warming up';
     else state = 'Listening';
-    $('brainState').textContent = state;
+    this.setText('brainState', state);
     const rows = REGIONS.map((r) => [r.label, v[r.id], `rgb(${r.color.join(',')})`]);
     rows.push(['Fatigue', v.fatigue, '#8a8a9a'], ['Overall hype', v.hype, '#b35cff']);
-    $('brainBars').innerHTML = rows.map(([n, val, c]) => `<div><i class="dot" style="background:${c}"></i><span>${n}</span><b><i style="width:${Math.round(val * 100)}%;background:${c}"></i></b><span>${Math.round(val * 100)}</span></div>`).join('');
+    this.setHTML('brainBars', rows.map(([n, val, c]) => `<div><i class="dot" style="background:${c}"></i><span>${n}</span><b><i style="width:${Math.round(val * 100)}%;background:${c}"></i></b><span>${Math.round(val * 100)}</span></div>`).join(''));
     if (sel) {
       const P = sel.p;
       $('who').innerHTML = `${esc(sel.style)} · ${esc(sel.state)}${sel.holding ? ' · ' + esc(sel.holding) : ''}<br>energy ${pct(P.energy)} · loves bass ${pct(P.bass)} · loves builds ${pct(P.build)}<br>reacts in ${Math.round(P.delay * 1000)} ms · stamina ${pct(P.stamina)}<br><a href="#" id="clearSel">← whole crowd</a>`;

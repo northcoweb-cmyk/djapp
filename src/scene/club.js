@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeStatic } from './merge.js';
 import { buildRooms, updateRooms } from './rooms.js';
+import { cheapenMaterials } from './bloom.js';
 
 import { ROOM, STAGE, BAR, LOUNGE, zoneAt, PRIVATE, floorY, collides } from './nav.js';
 export { ROOM, STAGE, BAR, LOUNGE, zoneAt, PRIVATE, floorY, collides };
@@ -287,7 +288,7 @@ export function buildClub(scene) {
 
   // ---------- moving heads + beams ----------
   const heads = [];
-  const beamGeo = new THREE.CylinderGeometry(0.06, 1.1, 9, 14, 1, true);
+  const beamGeo = new THREE.CylinderGeometry(0.05, 0.85, 9, 14, 1, true);
   beamGeo.translate(0, -4.5, 0);
   for (let i = 0; i < 10; i++) {
     const z = trussZ[i % 2 ? 1 : 2];
@@ -304,7 +305,7 @@ export function buildClub(scene) {
     lens.rotation.x = Math.PI / 2;
     lens.position.y = -0.185;
     head.add(lens);
-    const bm = new THREE.ShaderMaterial({ uniforms: { color: { value: new THREE.Color(0x4433ff) }, intensity: { value: 1 } }, vertexShader: beamVS, fragmentShader: beamFS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false });
+    const bm = new THREE.ShaderMaterial({ uniforms: { color: { value: new THREE.Color(0x4433ff) }, intensity: { value: 1 } }, vertexShader: beamVS, fragmentShader: beamFS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.FrontSide, toneMapped: false });
     const beam = new THREE.Mesh(beamGeo, bm);
     beam.position.y = -0.18;
     head.add(beam);
@@ -492,7 +493,7 @@ export function buildClub(scene) {
     c.fillRect(0, 0, w, h);
   });
   const smoke = [];
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 8; i++) {
     const sm = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, color: 0x4a3a8a, transparent: true, opacity: 0.08, depthWrite: false, blending: THREE.AdditiveBlending }));
     sm.position.set((Math.random() - 0.5) * 22, 0.8 + Math.random() * 5.5, -8 + Math.random() * 15);
     sm.scale.setScalar(5 + Math.random() * 5);
@@ -588,9 +589,10 @@ export function buildClub(scene) {
   g.add(shade);
 
   const rooms = buildRooms(g, { box, mats, canvasTex, neonSign });
+  console.info('cheaper materials', cheapenMaterials(g));
   const merged = mergeStatic(g, [pix, ledWall, tiles, ...heads.map((h) => h.fix), ...lasers, ...strobes, ...rooms.stallDoors.values(), ...rooms.gobos, rooms.tv.mesh]);
   console.info('club meshes merged', merged);
-  return { group: g, pix, pts, ledWallMat, tileMat, heads, lasers, strobes, strobeLight, spotA, spotB, hemi, washes, smoke, loungeSeats, mats, rooms };
+  return { group: g, pix, pts, ledWallMat, tileMat, tiles, heads, lasers, strobes, strobeLight, spotA, spotB, hemi, washes, smoke, loungeSeats, mats, rooms };
 }
 
 // ---------- per-frame lighting show ----------

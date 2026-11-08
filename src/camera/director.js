@@ -8,6 +8,8 @@ import { STAGE } from '../scene/nav.js';
 const v1 = new THREE.Vector3();
 const v2 = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
+const DRONE_FOCUS = new THREE.Vector3(0, 2.2, -7);
+const v3 = new THREE.Vector3();
 const ease = (x) => x * x * (3 - 2 * x);
 const noise = (t, s) => Math.sin(t * 1.3 + s) * 0.5 + Math.sin(t * 2.7 + s * 3.1) * 0.3 + Math.sin(t * 5.3 + s * 7.7) * 0.2;
 
@@ -293,7 +295,7 @@ export class Director {
     const fwd = v2.copy(d.vel).normalize();
     const lateral = acc.x * -fwd.z + acc.z * fwd.x;
     d.roll += (-lateral * 0.09 - d.roll) * dt * 2;
-    v2.copy(d.pos).addScaledVector(d.vel, 2.5).lerp(new THREE.Vector3(0, 2.2, -7), 0.55);
+    v2.copy(d.pos).addScaledVector(d.vel, 2.5).lerp(DRONE_FOCUS, 0.55);
     d.look.lerp(v2, dt * 1.5);
     this.camera.position.copy(d.pos);
     this.camera.lookAt(d.look);
@@ -319,7 +321,7 @@ export class Director {
     }
     const back = v1.set(Math.sin(input.camYaw), 0, Math.cos(input.camYaw));
     const dist = 3.2;
-    const target = new THREE.Vector3(p.pos.x, py + 1.65, p.pos.z);
+    const target = v3.set(p.pos.x, py + 1.65, p.pos.z);
     const want = v2.copy(target).addScaledVector(back, -dist * Math.cos(input.camPitch));
     want.y += dist * Math.sin(input.camPitch);
     const xmin = p.pos.x < -15 ? -18.8 : -14.6;

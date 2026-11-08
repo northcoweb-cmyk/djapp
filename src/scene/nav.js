@@ -178,6 +178,10 @@ let adj = [];
 function N(x, z, level = 0) {
   nodes.push({ x, z, level, id: nodes.length });
 }
+// straight-line walkability (used to straighten paths while walking)
+export function canWalk(ax, az, bx, bz, level) {
+  return losClear(ax, az, bx, bz, level, 0.2);
+}
 function losClear(ax, az, bx, bz, level, r = 0.2) {
   const d = Math.hypot(bx - ax, bz - az);
   const steps = Math.max(1, Math.ceil(d / 0.25));
