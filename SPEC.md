@@ -199,3 +199,35 @@ The four Sketchfab downloads (Quiet Moment with a Phone, Stride Forward, Holding
 ## Sing-along (honest scope)
 - Lyrics can't be reliably transcribed from music in the browser. Crowd sings **hook melodies on vowels ("oh", "ah", "hey") and chants**, pitch-tracked from the song's vocal band, locked to the beat grid, in male and female voice colours (formant-synthesized).
 - Optional per-song `hooks` file (user-supplied short hook text + start time) enables on-screen words and mouth movement timed to the hook.
+
+---
+
+# Asset inventory (checked from the pushed files)
+
+All files are Mixamo FBX with the same 65-bone skeleton. **Bone-name prefix differs per file** (`mixamorig`, `mixamorig2`, `mixamorig5`, `mixamorig6`, `mixamorig7`, `mixamorig9`, `mixamorig12`): normalise with `/^mixamorig\d*/ -> 'mixamorig'` before retargeting. Every file is ~48–57 MB (animation files embed a full character mesh, so the clip must be extracted and the mesh ignored). Ch08 is 83 MB and crashed the headless test browser, so it has not been inspected.
+
+## Characters (`source-models/characters/`, ~43k–55k tris each, 4k-class textures)
+| File | Who | Plan |
+|---|---|---|
+| Ch42_nonPBR | man, red graphic tee, denim shorts, **tattoos on arms and legs** | **DJ base**: recolour tee white, add cap, sunglasses, silver watch (legs hidden behind the decks) |
+| character.fbx (Ch31) | man, black sweater, black pants | bartender / club-goer |
+| animations/Talking.fbx, Walking (1).fbx (Ch33) | man, navy suit, tie | **security guards** (tint variants, earpiece prop) |
+| Ch01_nonPBR | bald man, grey polo, jeans | crowd |
+| Talking.fbx (Ch38) | man, white sweater, white shorts, socks, cleats | crowd (tint) |
+| Ch02_nonPBR | woman, orange cat sweatshirt, denim shorts | crowd / dancers behind decks |
+| Ch22_nonPBR | woman, white tee, jeans | crowd / dancers |
+| Ch37_nonPBR | woman, pink track jacket, black leggings | crowd |
+| Ch08_nonPBR | unknown (83 MB) | inspect natively with node |
+| Twerk character | woman (earlier upload, 15 s Dancing Twerk) | dancer behind the decks |
+
+Gap: no club-style women's outfits (dresses/skirts), only one suit. Optional extra downloads: 2–3 women in club outfits, one more suited/black-clothed man.
+
+## Animations (clip extracted per file; clip name is `mixamo.com`)
+Breathing Idle 9.9 s · House Dancing 26.2 s · Hip Hop Dancing 4.1 s · Jumping 2.4 s · Clapping 1.2 s · Cheering 2.9 s and 1.9 s · Rallying 6.2 s (drifts) · Drinking 8.9 s · Sitting Drinking 15.2 s (drifts) · Talking 3.8 s · Walking 2.5 s (drifts ~260 cm) · Walking With Shopping Bag 1.3 s (drifts) · Walking (suit) 2.5 s.
+Dances/idle/jump/clap/cheer are in place. Walks, Rallying and Sitting Drinking carry root motion: strip hips X/Z in code and match walking speed to the drift. Missing (done procedurally): sitting idle, phone filming, bartender pouring/shaking.
+
+## Optimisation plan
+Convert to optimised GLB: LODs ~12k / 4k / 1k tris, 1024 px webp textures, 1–2 MB per character; animation clips stored as small tracks-only files. `source-models/` is ~1.1 GB and stays out of the Vercel deploy (`.vercelignore`).
+
+## Other
+Phone (Sketchfab "Generic cellphone", 11k tris, separate screen/lens/chrome meshes, Sketchfab Standard licence): use it, decimated for the crowd, add screen glow and flash in code. Repo should be made private because raw Mixamo files and this phone are not for redistribution.
