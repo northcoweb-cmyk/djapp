@@ -222,7 +222,7 @@ $('enter').addEventListener('click', async () => {
   $('start').style.display = 'none';
   $('hud').hidden = false;
   engine.murmur(1);
-  director.setShot('wide');
+  director.setShot('wide', director.auto);
   hud.renderQueue();
   hud.hint(dj.canStart() ? 'Press Start set (or Space) when you are ready' : 'Add songs with + Add songs');
 });
