@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sublevel Club Sim</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+
+    <div id="start">
+      <div class="card">
+        <h1>SUBLEVEL</h1>
+        <p class="sub">AI DJ · 4 decks · 200-person crowd · brain view</p>
+        <div id="drop" class="drop">Drop MP3s here or <label class="link">browse<input id="file" type="file" accept="audio/*" multiple hidden /></label></div>
+        <ul id="startList"></ul>
+        <div class="row">
+          <label>Crowd <select id="crowdSize"><option>80</option><option>120</option><option selected>160</option><option>200</option></select></label>
+          <label>Quality <select id="quality"><option value="auto" selected>Auto (60 fps)</option><option value="low">Low</option><option value="high">High</option></select></label>
+        </div>
+        <button id="enter" disabled>Loading club…</button>
+        <p class="hint">WASD to walk as the owner (Play cam), drag to look, click anyone in the crowd to see their brain.</p>
+      </div>
+    </div>
+
+    <div id="hud" hidden>
+      <div id="top">
+        <div id="now"><span id="deckTag">—</span> <b id="trackName">Add tracks to start</b></div>
+        <div id="sectionTag">IDLE</div>
+        <div id="dropIn"></div>
+        <div id="bpm"></div>
+        <div class="meter"><span>CROWD HYPE</span><div class="bar"><i id="hypeBar"></i></div></div>
+      </div>
+      <div id="left" class="panel">
+        <h3>Queue <label class="mini">+ add<input id="file2" type="file" accept="audio/*" multiple hidden /></label></h3>
+        <ol id="queue"></ol>
+        <h3>DJ</h3>
+        <div id="log"></div>
+      </div>
+      <div id="right" class="panel">
+        <h3 id="brainTitle">Crowd brain</h3>
+        <svg id="brain" viewBox="0 0 200 140">
+          <path d="M100 12 C60 4 18 26 16 66 C12 104 50 132 96 128 C150 136 190 104 186 64 C184 24 140 4 100 12 Z" fill="#14101f" stroke="#3a2c66" stroke-width="2" />
+          <path id="rMotor" d="M70 18 C90 12 120 12 132 20 L120 54 L82 54 Z" fill="#3a6aff" />
+          <path id="rAnt" d="M26 60 C30 34 54 22 70 20 L80 56 L40 84 Z" fill="#e8c020" />
+          <path id="rEu" d="M134 22 C160 30 180 50 178 70 L136 82 L122 54 Z" fill="#ff3a8a" />
+          <path id="rFat" d="M44 92 L82 64 L130 64 L172 82 C160 112 120 126 96 122 C66 124 48 110 44 92 Z" fill="#7a7a8a" />
+          <path d="M100 14 L100 124" stroke="#2a2040" stroke-width="2" />
+        </svg>
+        <div id="brainBars"></div>
+        <div id="who"></div>
+        <h3>Drop scorecard</h3>
+        <ol id="drops"></ol>
+      </div>
+      <canvas id="timeline" width="1200" height="70"></canvas>
+      <div id="cams">
+        <button data-cam="orbit" class="on">Orbit</button><button data-cam="drone">Drone</button><button data-cam="balcony">Balcony</button><button data-cam="djpov">DJ POV</button><button data-cam="fisheye">Deck cam</button><button data-cam="front">Front</button><button data-cam="phone">Phone</button><button data-cam="play">Play (owner)</button>
+      </div>
+      <div id="fps"></div>
+      <div id="toast"></div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,107 @@
+{
+ "chars": {
+  "dj": {
+   "file": "chars/dj.glb",
+   "height": 178.47
+  },
+  "owner": {
+   "file": "chars/owner.glb",
+   "height": 176.4
+  },
+  "guard": {
+   "file": "chars/guard.glb",
+   "height": 178.4
+  },
+  "bartender": {
+   "file": "chars/bartender.glb",
+   "height": 178.23
+  },
+  "m42": {
+   "file": "chars/m42.glb",
+   "height": 180.12
+  },
+  "f02": {
+   "file": "chars/f02.glb",
+   "height": 176.36
+  },
+  "f22": {
+   "file": "chars/f22.glb",
+   "height": 175.2
+  },
+  "f37": {
+   "file": "chars/f37.glb",
+   "height": 174.17
+  },
+  "twerk": {
+   "file": "chars/twerk.glb",
+   "height": 378.48
+  }
+ },
+ "clips": {
+  "idle": {
+   "file": "anims/idle.json",
+   "duration": 9.933,
+   "speed": 0
+  },
+  "house": {
+   "file": "anims/house.json",
+   "duration": 26.167,
+   "speed": 0
+  },
+  "hiphop": {
+   "file": "anims/hiphop.json",
+   "duration": 4.1,
+   "speed": 0.001
+  },
+  "jump": {
+   "file": "anims/jump.json",
+   "duration": 2.367,
+   "speed": 0
+  },
+  "clap": {
+   "file": "anims/clap.json",
+   "duration": 1.167,
+   "speed": 0
+  },
+  "cheer": {
+   "file": "anims/cheer.json",
+   "duration": 2.9,
+   "speed": 0
+  },
+  "cheer2": {
+   "file": "anims/cheer2.json",
+   "duration": 1.9,
+   "speed": 0
+  },
+  "drink": {
+   "file": "anims/drink.json",
+   "duration": 8.867,
+   "speed": 0
+  },
+  "rally": {
+   "file": "anims/rally.json",
+   "duration": 6.2,
+   "speed": 0.183
+  },
+  "sit": {
+   "file": "anims/sit.json",
+   "duration": 15.2,
+   "speed": 0.185
+  },
+  "talk": {
+   "file": "anims/talk.json",
+   "duration": 3.767,
+   "speed": 0
+  },
+  "walk": {
+   "file": "anims/walk.json",
+   "duration": 2.5,
+   "speed": 1.039
+  },
+  "twerk": {
+   "file": "anims/twerk.json",
+   "duration": 15.2,
+   "speed": 0
+  }
+ }
+}
