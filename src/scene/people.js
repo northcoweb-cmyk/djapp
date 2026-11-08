@@ -1019,12 +1019,12 @@ export class PeopleSim {
         const side = lat >= 0 ? -1 : 1;
         sx += -uz * side * push * 1.4;
         sz += ux * side * push * 1.4;
-        if (od < 0.55) slow = Math.min(slow, 0.25);
+        if (od < 0.5) slow = Math.min(slow, o.state === 'dance' ? 0.55 : 0.3);
         if (o.state === 'dance' && od < 1.0) {
           // ask the dancer to step aside
-          o.yieldV.x += uz * -side * dt * 1.6;
-          o.yieldV.y += -ux * -side * dt * 1.6;
-          o.yieldV.clampLength(0, 0.7);
+          o.yieldV.x += uz * -side * dt * 2.6;
+          o.yieldV.y += -ux * -side * dt * 2.6;
+          o.yieldV.clampLength(0, 0.8);
         }
       }
     });

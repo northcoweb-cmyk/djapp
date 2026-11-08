@@ -1,7 +1,7 @@
 // Navigation for the club: walkable areas per level (0 = ground, 1 = balcony), obstacles,
 // floor heights (stage, stairs, lounge, balcony ramp), zones, points of interest and a
 // waypoint graph (line-of-sight edges + explicit stair edge) with Dijkstra path finding.
-export const FEATURES = { balcony: false, restrooms: false };
+export const FEATURES = { balcony: true, restrooms: true };
 
 export const ROOM = { x0: -15, x1: 15, z0: -10, z1: 10, h: 8 };
 export const STAGE = { x0: -7, x1: 7, z0: -10, z1: -6, y: 1.0 };

@@ -164,6 +164,7 @@ dj.on('drop', (ev) => {
   lightFX.dropStrength = ev.drop.strength;
   hud.brain.burst();
   director.onDrop();
+  if (ev.drop.strength > 0.62 && !ev.drop.kickIn) club.rooms.co2.fire(0.85 + ev.drop.strength * 0.3);
   if (!people) return;
   people.onDrop(ev, engine.now, (4 * 60) / (dj.masterBpm || 124));
   const eu = people.avg('anticipation') + ev.drop.strength * 0.6;
@@ -207,6 +208,10 @@ $('enter').addEventListener('click', async () => {
     people = new PeopleSim(scene, window.__assets, booth);
     people.populate(parseInt($('crowdSize').value, 10));
     people.onToast = toast;
+    people.onStallDoor = (s, open) => {
+      const d = club.rooms.stallDoors.get(s.z.toFixed(2));
+      if (d) d.userData.target = open ? 1.4 : 0;
+    };
   }
   $('start').style.display = 'none';
   $('hud').hidden = false;

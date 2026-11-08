@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeStatic } from './merge.js';
+import { buildRooms, updateRooms } from './rooms.js';
 
 import { ROOM, STAGE, BAR, LOUNGE, zoneAt, PRIVATE, floorY, collides } from './nav.js';
 export { ROOM, STAGE, BAR, LOUNGE, zoneAt, PRIVATE, floorY, collides };
@@ -120,7 +121,18 @@ export function buildClub(scene) {
   const ceil = box(30, 0.2, 24, mats.black, 0, ROOM.h + 0.1, -2);
   ceil.material = new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 1 });
   box(30, ROOM.h, 0.3, mats.wall, 0, ROOM.h / 2, ROOM.z1 + 0.15); // back (bar) wall
-  box(0.3, ROOM.h, 24, mats.wall, ROOM.x0 - 0.15, ROOM.h / 2, -2); // left
+  // left wall, with the two restroom doorways (z 0.6..1.6 and 3.8..4.8, 2.4 m high)
+  for (const [z0, z1] of [
+    [-14, 0.6],
+    [1.6, 3.8],
+    [4.8, 10],
+  ])
+    box(0.3, ROOM.h, z1 - z0, mats.wall, ROOM.x0 - 0.15, ROOM.h / 2, (z0 + z1) / 2);
+  for (const [z0, z1] of [
+    [0.6, 1.6],
+    [3.8, 4.8],
+  ])
+    box(0.3, ROOM.h - 2.4, z1 - z0, mats.wall, ROOM.x0 - 0.15, 2.4 + (ROOM.h - 2.4) / 2, (z0 + z1) / 2);
   box(0.3, ROOM.h, 24, mats.wall, ROOM.x1 + 0.15, ROOM.h / 2, -2); // right
   box(30, ROOM.h, 0.3, mats.wall, 0, ROOM.h / 2, -14.15); // backstage back wall
   // stage back wall (LED wall sits on it) with backstage door gap at x 6.2..7.6
@@ -367,49 +379,7 @@ export function buildClub(scene) {
     wall(s * 2.1 - 0.3, -7.85, s * 2.1 + 0.3, -7.35);
   }
 
-  // ---------- bar ----------
   const counterTop = new THREE.MeshStandardMaterial({ color: 0x151517, roughness: 0.15, metalness: 0.4 });
-  box(14.4, 1.1, 0.7, mats.dark, 0, 0.55, BAR.zc);
-  box(14.6, 0.06, 0.9, counterTop, 0, 1.13, BAR.zc);
-  const barLed = box(14.4, 0.03, 0.03, new THREE.MeshBasicMaterial({ color: 0x6a2cff, toneMapped: false }), 0, 0.1, BAR.zc - 0.36);
-  barLed.userData.led = true;
-  wall(-7.2, BAR.zc - 0.4, 7.2, BAR.zc + 0.4);
-  // back bar: shelves, backlit panel, bottles
-  const back = new THREE.Mesh(new THREE.PlaneGeometry(14, 2.2), new THREE.MeshBasicMaterial({ color: 0x40220f, toneMapped: false }));
-  back.position.set(0, 2.2, 9.98);
-  back.rotation.y = Math.PI;
-  g.add(back);
-  for (let s = 0; s < 3; s++) box(14, 0.04, 0.3, mats.wood, 0, 1.3 + s * 0.6, 9.82);
-  box(14, 1.0, 0.5, mats.wood, 0, 0.5, 9.7);
-  wall(-7.2, 9.4, 7.2, 10);
-  const bottleGeo = new THREE.CylinderGeometry(0.04, 0.045, 0.3, 8);
-  bottleGeo.translate(0, 0.15, 0);
-  const bottleMat = new THREE.MeshStandardMaterial({ roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.85 });
-  const nB = 120;
-  const bottles = new THREE.InstancedMesh(bottleGeo, bottleMat, nB);
-  const bcol = [0x2b6b2b, 0x6b3b12, 0xc9c9c9, 0x1a3a8a, 0x8a1a1a, 0xd8b04a];
-  for (let i = 0; i < nB; i++) {
-    const shelf = i % 3;
-    m4.makeTranslation(-6.6 + (Math.floor(i / 3) / (nB / 3)) * 13.2 + Math.random() * 0.05, 1.32 + shelf * 0.6, 9.82);
-    bottles.setMatrixAt(i, m4);
-    bottles.setColorAt(i, new THREE.Color(bcol[i % bcol.length]));
-  }
-  g.add(bottles);
-  // taps + stools
-  for (let x = -5; x <= 5; x += 2.5) {
-    box(0.05, 0.35, 0.05, mats.chrome, x, 1.33, BAR.zc + 0.2);
-    box(0.12, 0.06, 0.12, mats.chrome, x, 1.5, BAR.zc + 0.2);
-  }
-  for (let x = -6.3; x <= 6.3; x += 1.05) {
-    const st = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.06, 16), mats.leather);
-    st.position.set(x, 0.78, BAR.zc - 0.75);
-    g.add(st);
-    box(0.04, 0.76, 0.04, mats.chrome, x, 0.38, BAR.zc - 0.75);
-  }
-  const barSign = neonSign('BAR', '#ff8a3c', 2.4, 0.7);
-  barSign.position.set(0, 4.0, 9.95);
-  barSign.rotation.y = Math.PI;
-  g.add(barSign);
 
   // ---------- lounge (raised, couches, tables, rope) ----------
   box(LOUNGE.x1 - LOUNGE.x0, LOUNGE.y, LOUNGE.z1 - LOUNGE.z0, new THREE.MeshStandardMaterial({ color: 0x1a1216, roughness: 0.8 }), (LOUNGE.x0 + LOUNGE.x1) / 2, LOUNGE.y / 2, (LOUNGE.z0 + LOUNGE.z1) / 2);
@@ -447,15 +417,6 @@ export function buildClub(scene) {
   vip.rotation.y = -Math.PI / 2;
   g.add(vip);
 
-  // ---------- balcony / mezzanine (left wall) ----------
-  box(3.4, 0.25, 13, mats.dark, -13.3, 4.0, 2.5);
-  const glass = new THREE.Mesh(new THREE.BoxGeometry(0.03, 1.0, 13), new THREE.MeshStandardMaterial({ color: 0x88aaff, transparent: true, opacity: 0.12, roughness: 0.05 }));
-  glass.position.set(-11.6, 4.6, 2.5);
-  g.add(glass);
-  box(0.06, 0.06, 13, mats.chrome, -11.6, 5.12, 2.5);
-  for (let z = -3.5; z <= 8.5; z += 3) box(0.2, 4.0, 0.2, mats.steel, -11.75, 2.0, z);
-  for (let z = -3.5; z <= 8.5; z += 3) wall(-11.85, z - 0.1, -11.65, z + 0.1);
-
   // ---------- backstage / green room ----------
   box(2.4, 0.45, 0.9, mats.leather, -4, STAGE.y + 0.22, -13.4);
   box(2.4, 0.6, 0.2, mats.leather, -4, STAGE.y + 0.55, -13.8);
@@ -492,8 +453,8 @@ export function buildClub(scene) {
     g.add(ex);
   }
   const logo = neonSign('SUBLEVEL', '#7b4dff', 7, 1.6, 'bold 180px Helvetica, Arial');
-  logo.position.set(-14.95, 6.0, -2.5);
-  logo.rotation.y = Math.PI / 2;
+  logo.position.set(14.95, 6.3, -4.6);
+  logo.rotation.y = -Math.PI / 2;
   g.add(logo);
   // wall uplight washes (fake light pools)
   const washTex = canvasTex(128, 256, (c, w, h) => {
@@ -510,7 +471,8 @@ export function buildClub(scene) {
   });
   const washes = [];
   const washSpots = [];
-  for (let z = -8; z <= 8; z += 3.2) washSpots.push([-14.97, z, Math.PI / 2], [14.97, z, -Math.PI / 2]);
+  for (let z = -8; z <= 8; z += 3.2) washSpots.push([14.97, z, -Math.PI / 2]);
+  for (const z of [-8, -5.5]) washSpots.push([-14.97, z, Math.PI / 2]);
   for (let x = -12; x <= 12; x += 4) if (Math.abs(x) > 7.5) washSpots.push([x, 9.97, Math.PI]);
   for (const [x, z, ry] of washSpots) {
     const w = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 6), new THREE.MeshBasicMaterial({ map: washTex, color: 0x5a2cff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, opacity: 0.6 }));
@@ -564,6 +526,9 @@ export function buildClub(scene) {
     for (let z = -8.6; z <= 8.7; z += 1.12)
       for (let y = 1.4; y <= 5.3; y += 1.12) {
         if (sx < 0 && z > 5.6 && y < 3.2) continue; // entrance
+        if (sx < 0 && y < 2.9 && ((z > 0.2 && z < 2.0) || (z > 3.4 && z < 5.2))) continue; // restroom doors
+        if (sx < 0 && z > -4.4 && y > 2.9 && y < 4.6) continue; // balcony slab
+        if (sx < 0 && z > -4.4 && y < 2.9 && Math.abs(z - 2.7) < 0.3) continue;
         if (sx > 0 && z > -3.6 && z < 9 && y < 2.2) continue; // lounge couches
         const p = box(1.04, 1.04, 0.02, foam, sx * 14.99, y, z);
         p.rotation.y = Math.PI / 2;
@@ -622,9 +587,10 @@ export function buildClub(scene) {
   shade.position.set(-6.2, STAGE.y + 1.65, -13.5);
   g.add(shade);
 
-  const merged = mergeStatic(g, [pix, ledWall, tiles, bottles, ...heads.map((h) => h.fix), ...lasers, ...strobes]);
+  const rooms = buildRooms(g, { box, mats, canvasTex, neonSign });
+  const merged = mergeStatic(g, [pix, ledWall, tiles, ...heads.map((h) => h.fix), ...lasers, ...strobes, ...rooms.stallDoors.values(), ...rooms.gobos, rooms.tv.mesh]);
   console.info('club meshes merged', merged);
-  return { group: g, pix, pts, ledWallMat, tileMat, heads, lasers, strobes, strobeLight, spotA, spotB, hemi, washes, smoke, loungeSeats, mats };
+  return { group: g, pix, pts, ledWallMat, tileMat, heads, lasers, strobes, strobeLight, spotA, spotB, hemi, washes, smoke, loungeSeats, mats, rooms };
 }
 
 // ---------- per-frame lighting show ----------
@@ -637,6 +603,7 @@ const VIOLET = new THREE.Color(0x5a2cff);
 const WHITE = new THREE.Color(0xffffff);
 
 export function updateClub(club, t, dt, m, bands, lightFX) {
+  if (club.rooms) updateRooms(club.rooms, club, dt, m, t);
   const { pix, pts } = club;
   const sec = m.section || 'idle';
   const hype = m.playing ? m.hype : 0.1;
